@@ -14,24 +14,25 @@ logging.basicConfig(level=logging.INFO)
 
 def get_gmail_service():
     creds = Credentials(
-        token=os.getenv("GOOGLE_ACCESS_TOKEN"),
+        token=None,  # Let API refresh automatically
         refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=["https://www.googleapis.com/auth/gmail.readonly"]
+        scopes=["https://www.googleapis.com/auth/gmail.modify"]  # ✅ match existing refresh_token scope
     )
     return build("gmail", "v1", credentials=creds)
 
 
+# Placeholder simple classifier (replace later with Logistic Regression)
 def classify_email(subject, snippet):
     spam_keywords = ["lottery", "winner", "prize", "claim now", "click here"]
     text = f"{subject} {snippet}".lower()
 
     for kw in spam_keywords:
         if kw in text:
-            return "Spam", 98.0
-    return "Not Spam", 90.0
+            return "Unwanted", 98.0
+    return "Wanted", 90.0
 
 
 @app.route("/")
