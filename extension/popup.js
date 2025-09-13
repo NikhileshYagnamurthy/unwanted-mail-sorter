@@ -3,7 +3,7 @@ async function fetchEmails() {
   emailsDiv.innerHTML = "⏳ Fetching emails...";
 
   try {
-    const res = await fetch("http://127.0.0.1:5000/fetch-emails");
+    const res = await fetch("https://unwanted-mail-sorter.onrender.com/fetch-emails");
     const data = await res.json();
 
     if (!Array.isArray(data)) {
