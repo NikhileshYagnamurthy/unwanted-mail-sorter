@@ -1,14 +1,11 @@
 import os
 from flask import Flask, jsonify
-from flask_cors import CORS
+from flask_cors import CORS   # ✅ Allow Chrome Extension to connect
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-import base64
-import email
-import random
 
 app = Flask(__name__)
-CORS(app)  # Allow Chrome extension to connect
+CORS(app)  # ✅ Enable CORS for all routes
 
 def get_gmail_service():
     """Authenticate using environment variables and return Gmail API service."""
@@ -26,28 +23,24 @@ def get_gmail_service():
 def home():
     return jsonify({"message": "Gmail API backend is running ✅"})
 
-@app.route("/fetch-emails")
+@app.route("/fetch-emails")   # ✅ Matches popup.js
 def fetch_emails():
     try:
         service = get_gmail_service()
-        results = service.users().messages().list(userId="me", maxResults=5).execute()
+        results = service.users().messages().list(userId="me", maxResults=10).execute()
         messages = results.get("messages", [])
 
         emails = []
         for msg in messages:
             msg_data = service.users().messages().get(userId="me", id=msg["id"]).execute()
-            headers = msg_data["payload"]["headers"]
-
+            headers = msg_data.get("payload", {}).get("headers", [])
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(No Subject)")
-
-            # 🔥 Dummy classification (replace with ML later)
-            label = random.choice(["Spam", "Not Spam"])
-            confidence = round(random.uniform(70, 99), 2)
-
+            
+            # Fake classifier (replace with ML later if you want)
             emails.append({
                 "subject": subject,
-                "label": label,
-                "confidence": confidence
+                "label": "Unwanted" if "unsubscribe" in subject.lower() else "Wanted",
+                "confidence": 95.0
             })
 
         return jsonify(emails)
@@ -56,5 +49,5 @@ def fetch_emails():
         return jsonify({"error": str(e)})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Render provides PORT env
+    port = int(os.environ.get("PORT", 5000))  # Render provides PORT
     app.run(host="0.0.0.0", port=port)
