@@ -1,53 +1,39 @@
 import os
 from flask import Flask, jsonify
-from flask_cors import CORS   # ✅ Allow Chrome Extension to connect
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # ✅ Enable CORS for all routes
-
-def get_gmail_service():
-    """Authenticate using environment variables and return Gmail API service."""
-    creds = Credentials(
-        token=os.getenv("GOOGLE_ACCESS_TOKEN"),
-        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.getenv("GOOGLE_CLIENT_ID"),
-        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=["https://www.googleapis.com/auth/gmail.readonly"]
-    )
-    return build("gmail", "v1", credentials=creds)
+CORS(app)  # ✅ Allow requests from your Chrome extension
 
 @app.route("/")
 def home():
     return jsonify({"message": "Gmail API backend is running ✅"})
 
-@app.route("/fetch-emails")   # ✅ Matches popup.js
+@app.route("/fetch-emails")
 def fetch_emails():
-    try:
-        service = get_gmail_service()
-        results = service.users().messages().list(userId="me", maxResults=10).execute()
-        messages = results.get("messages", [])
-
-        emails = []
-        for msg in messages:
-            msg_data = service.users().messages().get(userId="me", id=msg["id"]).execute()
-            headers = msg_data.get("payload", {}).get("headers", [])
-            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(No Subject)")
-            
-            # Fake classifier (replace with ML later if you want)
-            emails.append({
-                "subject": subject,
-                "label": "Unwanted" if "unsubscribe" in subject.lower() else "Wanted",
-                "confidence": 95.0
-            })
-
-        return jsonify(emails)
-
-    except Exception as e:
-        return jsonify({"error": str(e)})
+    """
+    For now, return mock emails so extension displays correctly.
+    Later, we’ll connect this with Gmail API.
+    """
+    emails = [
+        {
+            "subject": "Welcome to Gmail",
+            "label": "Not Spam",
+            "confidence": 95.23
+        },
+        {
+            "subject": "You won a lottery!!!",
+            "label": "Spam",
+            "confidence": 98.67
+        },
+        {
+            "subject": "Meeting tomorrow at 10AM",
+            "label": "Not Spam",
+            "confidence": 87.45
+        }
+    ]
+    return jsonify(emails)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Render provides PORT
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
