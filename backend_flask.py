@@ -1,11 +1,14 @@
 import os
 from flask import Flask, jsonify
-from flask_cors import CORS   # ✅ Added for CORS
+from flask_cors import CORS
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+import base64
+import email
+import random
 
 app = Flask(__name__)
-CORS(app)  # ✅ Allow cross-origin requests (needed for Chrome extension)
+CORS(app)  # Allow Chrome extension to connect
 
 def get_gmail_service():
     """Authenticate using environment variables and return Gmail API service."""
@@ -23,28 +26,28 @@ def get_gmail_service():
 def home():
     return jsonify({"message": "Gmail API backend is running ✅"})
 
-@app.route("/fetch-emails")   # ✅ renamed to match your extension code
+@app.route("/fetch-emails")
 def fetch_emails():
     try:
         service = get_gmail_service()
-        results = service.users().messages().list(userId="me", maxResults=10).execute()
+        results = service.users().messages().list(userId="me", maxResults=5).execute()
         messages = results.get("messages", [])
 
-        # Return structured response instead of just IDs
         emails = []
         for msg in messages:
-            msg_detail = service.users().messages().get(userId="me", id=msg["id"]).execute()
-            subject = ""
-            for header in msg_detail["payload"]["headers"]:
-                if header["name"] == "Subject":
-                    subject = header["value"]
-                    break
+            msg_data = service.users().messages().get(userId="me", id=msg["id"]).execute()
+            headers = msg_data["payload"]["headers"]
+
+            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(No Subject)")
+
+            # 🔥 Dummy classification (replace with ML later)
+            label = random.choice(["Spam", "Not Spam"])
+            confidence = round(random.uniform(70, 99), 2)
 
             emails.append({
-                "id": msg["id"],
                 "subject": subject,
-                "label": "Unknown",
-                "confidence": 100.0
+                "label": label,
+                "confidence": confidence
             })
 
         return jsonify(emails)
