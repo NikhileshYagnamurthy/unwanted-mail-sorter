@@ -1,0 +1,12 @@
+# Ignore Gmail secrets
+credentials.json
+token.json
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Other temporary files
+classified_emails.json
+processed_ids.json
+extension.zip

@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Unwanted Mail Sorter",
+  "version": "1.0",
+  "description": "Classifies Gmail emails as Wanted or Unwanted using ML backend.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:5000/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "options_page": "settings.html"
+}
