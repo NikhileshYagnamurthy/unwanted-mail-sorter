@@ -1,7 +1,7 @@
 flask
-flask-cors
 google-api-python-client
 google-auth
 google-auth-oauthlib
-scikit-learn
+google-auth-httplib2
 pandas
+gunicorn
