@@ -1,17 +1,18 @@
 import os
+import logging
 from flask import Flask, jsonify
 from flask_cors import CORS
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-import base64
-import email
 
 app = Flask(__name__)
-CORS(app)  # allow Chrome extension to call this backend
+CORS(app)
+
+# Enable logging to Render logs
+logging.basicConfig(level=logging.INFO)
 
 
 def get_gmail_service():
-    """Authenticate using environment variables and return Gmail API service."""
     creds = Credentials(
         token=os.getenv("GOOGLE_ACCESS_TOKEN"),
         refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
@@ -24,10 +25,6 @@ def get_gmail_service():
 
 
 def classify_email(subject, snippet):
-    """
-    Very basic spam classifier (placeholder).
-    Replace with your ML model later if needed.
-    """
     spam_keywords = ["lottery", "winner", "prize", "claim now", "click here"]
     text = f"{subject} {snippet}".lower()
 
@@ -46,8 +43,6 @@ def home():
 def fetch_emails():
     try:
         service = get_gmail_service()
-
-        # Fetch latest 5 messages
         results = service.users().messages().list(userId="me", maxResults=5).execute()
         messages = results.get("messages", [])
 
@@ -55,17 +50,15 @@ def fetch_emails():
 
         for msg in messages:
             msg_obj = service.users().messages().get(userId="me", id=msg["id"]).execute()
-            payload = msg_obj.get("payload", {})
-            headers = payload.get("headers", [])
-
-            # Extract subject
+            headers = msg_obj.get("payload", {}).get("headers", [])
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(No Subject)")
-
-            # Extract snippet
             snippet = msg_obj.get("snippet", "")
 
-            # Classify email
+            # Classify
             label, confidence = classify_email(subject, snippet)
+
+            # 🔥 Log subject and classification to Render logs
+            logging.info(f"Email: {subject} | Label: {label} | Confidence: {confidence}")
 
             email_data.append({
                 "subject": subject,
@@ -76,9 +69,10 @@ def fetch_emails():
         return jsonify({"emails": email_data})
 
     except Exception as e:
+        logging.error(f"Error fetching emails: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Render provides PORT
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
