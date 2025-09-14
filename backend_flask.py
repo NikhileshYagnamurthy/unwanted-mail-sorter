@@ -113,5 +113,14 @@ def fetch_emails(user):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/whoami")
+def whoami():
+    if not USER_TOKENS:
+        return jsonify({"email": None})
+    # return the first logged-in email (since we store per-user)
+    email = list(USER_TOKENS.keys())[0]
+    return jsonify({"email": email})
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)

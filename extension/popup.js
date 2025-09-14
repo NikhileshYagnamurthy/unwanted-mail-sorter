@@ -1,58 +1,75 @@
-async function fetchEmails() {
+const BACKEND = "https://unwanted-mail-sorter.onrender.com";
+
+// Check if user is logged in
+async function checkAuth() {
+  const res = await fetch(`${BACKEND}/whoami`);
+  const data = await res.json();
+
+  if (!data.email) {
+    // No user logged in → show login button
+    document.getElementById("emails").innerHTML = "⚠️ No user logged in.";
+    document.getElementById("login").style.display = "block";
+    return null;
+  }
+
+  document.getElementById("login").style.display = "none";
+  return data.email;
+}
+
+// Fetch emails for logged-in user
+async function fetchEmails(user) {
   const emailsDiv = document.getElementById("emails");
   emailsDiv.innerHTML = "⏳ Fetching emails...";
 
   try {
-    const res = await fetch("https://unwanted-mail-sorter.onrender.com/fetch-emails");
+    const res = await fetch(`${BACKEND}/fetch-emails/${user}`);
     const data = await res.json();
 
-    // Normalize backend response
     let emails = [];
     if (Array.isArray(data)) {
-      emails = data; // backend returned plain array
+      emails = data;
     } else if (Array.isArray(data.emails)) {
-      emails = data.emails; // backend returned object with emails
+      emails = data.emails;
     } else {
       emailsDiv.innerHTML = "⚠️ Unexpected response from backend.";
       return;
     }
 
-    // Apply threshold from settings
-    chrome.storage.sync.get(["threshold"], (result) => {
-      const threshold = result.threshold || 0.6;
-      emailsDiv.innerHTML = "";
-
-      emails.forEach(email => {
-        const card = document.createElement("div");
-        card.className = "email-card";
-
-        let label = email.label;
-        if (email.confidence < threshold * 100) {
-          label = "Uncertain 🤔";
-        }
-
-        card.innerHTML = `
-          <p><strong>${email.subject}</strong></p>
-          <p>${label}</p>
-          <p>Confidence: ${email.confidence.toFixed(2)}%</p>
-          <hr>
-        `;
-        emailsDiv.appendChild(card);
-      });
-
-      if (emails.length === 0) {
-        emailsDiv.innerHTML = "📭 No emails found.";
-      }
+    // Render emails
+    emailsDiv.innerHTML = "";
+    emails.forEach(email => {
+      const card = document.createElement("div");
+      card.className = "email-card";
+      card.innerHTML = `
+        <p><strong>${email.subject}</strong></p>
+        <p>From: ${email.from}</p>
+        <hr>
+      `;
+      emailsDiv.appendChild(card);
     });
 
+    if (emails.length === 0) {
+      emailsDiv.innerHTML = "📭 No emails found.";
+    }
   } catch (err) {
     console.error(err);
     emailsDiv.innerHTML = "⚠️ Could not connect to backend.";
   }
 }
 
-// Button click → refresh emails
-document.getElementById("refresh").addEventListener("click", fetchEmails);
+// Button → login
+document.getElementById("login").addEventListener("click", () => {
+  chrome.tabs.create({ url: `${BACKEND}/login` });
+});
+
+// Button → refresh
+document.getElementById("refresh").addEventListener("click", async () => {
+  const user = await checkAuth();
+  if (user) fetchEmails(user);
+});
 
 // Run on popup open
-fetchEmails();
+(async () => {
+  const user = await checkAuth();
+  if (user) fetchEmails(user);
+})();
