@@ -9,12 +9,18 @@ subject,label
 "Payment receipt for your subscription",Wanted
 "Bank OTP for transaction",Wanted
 "Your coding contest registration is confirmed",Wanted
+"NVIDIA: Important driver update available",Wanted
+"Google Meet: Interview scheduled for tomorrow",Wanted
+"Steam: New login detected from Chrome",Wanted
+"InterviewBit: Mock interview scheduled",Wanted
+"Smart Interviews: Coding test invitation",Wanted
+"Zoom Meeting: Project sync at 6 PM",Wanted
 "How Lovable users make money with Lovable",Unwanted
 "You have 8 notifications about Sskroyal and others",Unwanted
 "We want to meet your expectations - tell us how!",Unwanted
 "You have 8 notifications about Harini and others",Unwanted
 "Create a custom domain for your Lovable app in < 2 minutes",Unwanted
-"👤 Akarsha Reddy is a new friend suggestion for you",Unwanted
+"Akarsha Reddy is a new friend suggestion for you",Unwanted
 "You have 8 notifications about Mahesh and others",Unwanted
 "Start building Lovable apps with full stack features in < 5 minutes",Unwanted
 "Lovable Update - student discount, security certifications, viewer seats & more",Unwanted
@@ -26,3 +32,7 @@ subject,label
 "3 tricks to get more value from Lovable",Unwanted
 "Reminder: Don't miss this guide on using Lovable's full potential",Unwanted
 "You have 10 notifications about shradha and others",Unwanted
+"Spline latest updates from August - Hey",Unwanted
+"Boost your career with these online courses",Unwanted
+"University newsletter - September edition",Unwanted
+"50% discount on your next order",Unwanted

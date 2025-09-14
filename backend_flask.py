@@ -1,6 +1,6 @@
 import os
 import logging
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -8,24 +8,24 @@ from googleapiclient.discovery import build
 app = Flask(__name__)
 CORS(app)
 
-# Enable logging to Render logs
+# Enable logging for Render
 logging.basicConfig(level=logging.INFO)
 
+# In-memory store for multiple users’ tokens
+USER_TOKENS = {}
 
-def get_gmail_service():
-    creds = Credentials(
-        token=None,  # Let API refresh automatically
-        refresh_token=os.getenv("GOOGLE_REFRESH_TOKEN"),
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.getenv("GOOGLE_CLIENT_ID"),
-        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=["https://www.googleapis.com/auth/gmail.modify"]  # ✅ match existing refresh_token scope
-    )
+
+def get_gmail_service(user_id):
+    """Build Gmail service for a given user_id using stored token_json"""
+    if user_id not in USER_TOKENS:
+        raise Exception(f"No token found for user {user_id}")
+
+    creds = Credentials.from_authorized_user_info(USER_TOKENS[user_id])
     return build("gmail", "v1", credentials=creds)
 
 
-# Placeholder simple classifier (replace later with Logistic Regression)
 def classify_email(subject, snippet):
+    """Very simple spam filter (replace later with ML model)"""
     spam_keywords = ["lottery", "winner", "prize", "claim now", "click here"]
     text = f"{subject} {snippet}".lower()
 
@@ -37,28 +37,46 @@ def classify_email(subject, snippet):
 
 @app.route("/")
 def home():
-    return jsonify({"message": "Gmail API backend is running ✅"})
+    return jsonify({"message": "Multi-user Gmail API backend is running ✅"})
 
 
-@app.route("/fetch-emails")
-def fetch_emails():
+@app.route("/add-token", methods=["POST"])
+def add_token():
+    """Store a user's Gmail token"""
     try:
-        service = get_gmail_service()
+        data = request.json
+        user_id = data.get("user_id")
+        token_json = data.get("token_json")
+
+        if not user_id or not token_json:
+            return jsonify({"error": "user_id and token_json are required"}), 400
+
+        USER_TOKENS[user_id] = token_json
+        logging.info(f"Stored token for user {user_id}")
+        return jsonify({"message": f"Token stored for {user_id}"})
+
+    except Exception as e:
+        logging.error(f"Error storing token: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/fetch-emails/<user_id>", methods=["GET"])
+def fetch_emails(user_id):
+    """Fetch and classify recent emails for a user"""
+    try:
+        service = get_gmail_service(user_id)
         results = service.users().messages().list(userId="me", maxResults=5).execute()
         messages = results.get("messages", [])
 
         email_data = []
-
         for msg in messages:
             msg_obj = service.users().messages().get(userId="me", id=msg["id"]).execute()
             headers = msg_obj.get("payload", {}).get("headers", [])
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(No Subject)")
             snippet = msg_obj.get("snippet", "")
 
-            # Classify
             label, confidence = classify_email(subject, snippet)
 
-            # 🔥 Log subject and classification to Render logs
             logging.info(f"Email: {subject} | Label: {label} | Confidence: {confidence}")
 
             email_data.append({
@@ -70,7 +88,7 @@ def fetch_emails():
         return jsonify({"emails": email_data})
 
     except Exception as e:
-        logging.error(f"Error fetching emails: {e}")
+        logging.error(f"Error fetching emails for {user_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
