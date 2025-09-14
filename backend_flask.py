@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
@@ -9,7 +8,7 @@ from googleapiclient.discovery import build
 
 app = Flask(__name__)
 CORS(app)
-app.secret_key = "super_secret_key"  # change in prod
+app.secret_key = "super_secret_key"  # ⚠️ change in production
 
 logging.basicConfig(level=logging.INFO)
 
@@ -30,7 +29,10 @@ def login():
     flow = Flow.from_client_secrets_file(
         GOOGLE_CLIENT_SECRETS_FILE,
         scopes=SCOPES,
-        redirect_uri=os.environ.get("OAUTH_REDIRECT_URI", "http://localhost:5000/oauth2callback"),
+        redirect_uri=os.environ.get(
+            "OAUTH_REDIRECT_URI",
+            "http://localhost:5000/oauth2callback"
+        ),
     )
     auth_url, _ = flow.authorization_url(
         access_type="offline",
@@ -46,14 +48,17 @@ def oauth2callback():
     flow = Flow.from_client_secrets_file(
         GOOGLE_CLIENT_SECRETS_FILE,
         scopes=SCOPES,
-        redirect_uri=os.environ.get("OAUTH_REDIRECT_URI", "http://localhost:5000/oauth2callback"),
+        redirect_uri=os.environ.get(
+            "OAUTH_REDIRECT_URI",
+            "http://localhost:5000/oauth2callback"
+        ),
     )
     flow.fetch_token(authorization_response=request.url)
 
     creds = flow.credentials
     user_info = get_user_info(creds)
 
-    # Store refresh token
+    # Store refresh token in memory (replace with DB in production)
     USER_TOKENS[user_info["email"]] = {
         "refresh_token": creds.refresh_token,
         "client_id": creds.client_id,
@@ -103,7 +108,19 @@ def home():
 
 @app.route("/fetch-emails/<user_id>", methods=["GET"])
 def fetch_emails(user_id):
+    """Fetch Gmail emails or return mock data if no token"""
     try:
+        if user_id not in USER_TOKENS:
+            # Mock emails if user not logged in
+            return jsonify({
+                "emails": [
+                    {"subject": "Win a free iPhone!", "label": "Unwanted", "confidence": 97.5},
+                    {"subject": "Meeting at 3PM", "label": "Wanted", "confidence": 92.1},
+                    {"subject": "Claim your lottery prize", "label": "Unwanted", "confidence": 98.3}
+                ]
+            })
+
+        # ---- REAL Gmail fetch ----
         service = get_gmail_service(user_id)
         results = service.users().messages().list(userId="me", maxResults=5).execute()
         messages = results.get("messages", [])
@@ -125,9 +142,10 @@ def fetch_emails(user_id):
             })
 
         return jsonify({"emails": email_data})
+
     except Exception as e:
         logging.error(f"Error fetching emails for {user_id}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"emails": []})
 
 
 # -------------------
