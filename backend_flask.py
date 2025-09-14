@@ -23,130 +23,95 @@ if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
     with open(GOOGLE_CLIENT_SECRETS_FILE, "w") as f:
         f.write(os.environ["GOOGLE_CREDENTIALS_JSON"])
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+# SCOPES: must match exactly what Google returns
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.readonly"
+]
 
-# In-memory token store (not persistent)
+# In-memory token store (per user, not persistent)
 USER_TOKENS = {}
 
 
-# -------------------
-# OAuth Login
-# -------------------
+@app.route("/")
+def index():
+    return "✅ Backend running!"
+
+
 @app.route("/login")
 def login():
-    """Redirect user to Google login"""
+    """Start OAuth flow"""
     flow = Flow.from_client_secrets_file(
         GOOGLE_CLIENT_SECRETS_FILE,
         scopes=SCOPES,
-        redirect_uri=os.environ.get(
-            "OAUTH_REDIRECT_URI",
-            "https://unwanted-mail-sorter.onrender.com/oauth2callback",  # default to Render URL
-        ),
+        redirect_uri="https://unwanted-mail-sorter.onrender.com/oauth2callback"
     )
-    auth_url, _ = flow.authorization_url(
+    auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
-        prompt="consent"
+        prompt="consent"  # ensures refresh_token is always returned
     )
     return redirect(auth_url)
 
 
 @app.route("/oauth2callback")
 def oauth2callback():
-    """Handle OAuth callback, exchange code for tokens"""
-    flow = Flow.from_client_secrets_file(
-        GOOGLE_CLIENT_SECRETS_FILE,
-        scopes=SCOPES,
-        redirect_uri=os.environ.get(
-            "OAUTH_REDIRECT_URI",
-            "https://unwanted-mail-sorter.onrender.com/oauth2callback",
-        ),
-    )
-    flow.fetch_token(authorization_response=request.url)
-
-    creds = flow.credentials
-    user_info = get_user_info(creds)
-
-    # Store refresh token
-    USER_TOKENS[user_info["email"]] = {
-        "refresh_token": creds.refresh_token,
-        "client_id": creds.client_id,
-        "client_secret": creds.client_secret,
-        "token_uri": creds.token_uri,
-        "scopes": creds.scopes,
-    }
-
-    logging.info(f"Stored token for {user_info['email']}")
-    return jsonify({"msg": "Login successful", "user": user_info})
-
-
-def get_user_info(creds):
-    """Get user email/profile"""
-    service = build("oauth2", "v2", credentials=creds)
-    return service.userinfo().get().execute()
-
-
-# -------------------
-# Gmail Service
-# -------------------
-def get_gmail_service(user_id):
-    if user_id not in USER_TOKENS:
-        raise Exception(f"No token found for user {user_id}")
-
-    creds = Credentials.from_authorized_user_info(USER_TOKENS[user_id])
-    return build("gmail", "v1", credentials=creds)
-
-
-def classify_email(subject, snippet):
-    """Simple spam classifier"""
-    spam_keywords = ["lottery", "winner", "prize", "claim now", "click here"]
-    text = f"{subject} {snippet}".lower()
-    for kw in spam_keywords:
-        if kw in text:
-            return "Unwanted", 98.0
-    return "Wanted", 90.0
-
-
-# -------------------
-# Routes
-# -------------------
-@app.route("/")
-def home():
-    return jsonify({"message": "Multi-user Gmail API backend is running ✅"})
-
-
-@app.route("/fetch-emails/<user_id>", methods=["GET"])
-def fetch_emails(user_id):
+    """Handle OAuth callback"""
     try:
-        service = get_gmail_service(user_id)
-        results = service.users().messages().list(userId="me", maxResults=5).execute()
-        messages = results.get("messages", [])
+        flow = Flow.from_client_secrets_file(
+            GOOGLE_CLIENT_SECRETS_FILE,
+            scopes=SCOPES,
+            redirect_uri="https://unwanted-mail-sorter.onrender.com/oauth2callback"
+        )
+        flow.fetch_token(authorization_response=request.url)
 
-        email_data = []
-        for msg in messages:
-            msg_obj = service.users().messages().get(userId="me", id=msg["id"]).execute()
-            headers = msg_obj.get("payload", {}).get("headers", [])
-            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(No Subject)")
-            snippet = msg_obj.get("snippet", "")
+        creds = flow.credentials
+        # Save token in memory (keyed by email)
+        service = build("gmail", "v1", credentials=creds)
+        profile = service.users().getProfile(userId="me").execute()
+        email = profile["emailAddress"]
 
-            label, confidence = classify_email(subject, snippet)
+        USER_TOKENS[email] = creds.to_json()
 
-            logging.info(f"Email: {subject} | Label: {label} | Confidence: {confidence}")
-            email_data.append({
-                "subject": subject,
-                "label": label,
-                "confidence": confidence
-            })
+        logging.info(f"✅ Stored token for {email}")
+        return f"Login successful! You can now fetch emails for {email}"
 
-        return jsonify({"emails": email_data})
     except Exception as e:
-        logging.error(f"Error fetching emails for {user_id}: {e}")
+        logging.exception("OAuth2 callback failed")
         return jsonify({"error": str(e)}), 500
 
 
-# -------------------
-# Main
-# -------------------
+@app.route("/fetch-emails/<user>")
+def fetch_emails(user):
+    """Fetch latest 5 emails for user"""
+    try:
+        if user not in USER_TOKENS:
+            return jsonify({"error": f"No token found for user {user}"}), 400
+
+        creds = Credentials.from_authorized_user_info(json.loads(USER_TOKENS[user]))
+        service = build("gmail", "v1", credentials=creds)
+
+        results = service.users().messages().list(
+            userId="me", maxResults=5
+        ).execute()
+        messages = results.get("messages", [])
+
+        emails = []
+        for msg in messages:
+            msg_data = service.users().messages().get(
+                userId="me", id=msg["id"], format="metadata"
+            ).execute()
+            headers = msg_data["payload"]["headers"]
+            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "")
+            sender = next((h["value"] for h in headers if h["name"] == "From"), "")
+            emails.append({"id": msg["id"], "from": sender, "subject": subject})
+
+        return jsonify({"emails": emails})
+
+    except Exception as e:
+        logging.exception("Fetching emails failed")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=10000)
