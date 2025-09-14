@@ -8,7 +8,7 @@ from googleapiclient.discovery import build
 
 app = Flask(__name__)
 CORS(app)
-app.secret_key = "super_secret_key"  # ⚠️ change in production
+app.secret_key = "super_secret_key"  # change in production
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,9 +16,8 @@ logging.basicConfig(level=logging.INFO)
 GOOGLE_CLIENT_SECRETS_FILE = "credentials.json"
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
-# In-memory token store
+# In-memory token store (use DB later)
 USER_TOKENS = {}
-
 
 # -------------------
 # OAuth Login
@@ -31,7 +30,7 @@ def login():
         scopes=SCOPES,
         redirect_uri=os.environ.get(
             "OAUTH_REDIRECT_URI",
-            "http://localhost:5000/oauth2callback"
+            "https://unwanted-mail-sorter.onrender.com/oauth2callback"
         ),
     )
     auth_url, _ = flow.authorization_url(
@@ -50,7 +49,7 @@ def oauth2callback():
         scopes=SCOPES,
         redirect_uri=os.environ.get(
             "OAUTH_REDIRECT_URI",
-            "http://localhost:5000/oauth2callback"
+            "https://unwanted-mail-sorter.onrender.com/oauth2callback"
         ),
     )
     flow.fetch_token(authorization_response=request.url)
@@ -58,7 +57,7 @@ def oauth2callback():
     creds = flow.credentials
     user_info = get_user_info(creds)
 
-    # Store refresh token in memory (replace with DB in production)
+    # Store refresh token
     USER_TOKENS[user_info["email"]] = {
         "refresh_token": creds.refresh_token,
         "client_id": creds.client_id,
@@ -83,7 +82,6 @@ def get_user_info(creds):
 def get_gmail_service(user_id):
     if user_id not in USER_TOKENS:
         raise Exception(f"No token found for user {user_id}")
-
     creds = Credentials.from_authorized_user_info(USER_TOKENS[user_id])
     return build("gmail", "v1", credentials=creds)
 
@@ -103,24 +101,12 @@ def classify_email(subject, snippet):
 # -------------------
 @app.route("/")
 def home():
-    return jsonify({"message": "Multi-user Gmail API backend is running ✅"})
+    return jsonify({"message": "Backend is running ✅"})
 
 
 @app.route("/fetch-emails/<user_id>", methods=["GET"])
 def fetch_emails(user_id):
-    """Fetch Gmail emails or return mock data if no token"""
     try:
-        if user_id not in USER_TOKENS:
-            # Mock emails if user not logged in
-            return jsonify({
-                "emails": [
-                    {"subject": "Win a free iPhone!", "label": "Unwanted", "confidence": 97.5},
-                    {"subject": "Meeting at 3PM", "label": "Wanted", "confidence": 92.1},
-                    {"subject": "Claim your lottery prize", "label": "Unwanted", "confidence": 98.3}
-                ]
-            })
-
-        # ---- REAL Gmail fetch ----
         service = get_gmail_service(user_id)
         results = service.users().messages().list(userId="me", maxResults=5).execute()
         messages = results.get("messages", [])
@@ -133,8 +119,6 @@ def fetch_emails(user_id):
             snippet = msg_obj.get("snippet", "")
 
             label, confidence = classify_email(subject, snippet)
-
-            logging.info(f"Email: {subject} | Label: {label} | Confidence: {confidence}")
             email_data.append({
                 "subject": subject,
                 "label": label,
@@ -142,10 +126,9 @@ def fetch_emails(user_id):
             })
 
         return jsonify({"emails": email_data})
-
     except Exception as e:
         logging.error(f"Error fetching emails for {user_id}: {e}")
-        return jsonify({"emails": []})
+        return jsonify({"error": str(e)}), 500
 
 
 # -------------------
