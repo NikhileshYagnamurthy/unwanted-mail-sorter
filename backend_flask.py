@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
@@ -12,12 +13,21 @@ app.secret_key = "super_secret_key"  # change in production
 
 logging.basicConfig(level=logging.INFO)
 
+# -------------------
 # Google API config
-GOOGLE_CLIENT_SECRETS_FILE = "credentials.json"
+# -------------------
+GOOGLE_CLIENT_SECRETS_FILE = "/tmp/credentials.json"
+
+# If GOOGLE_CREDENTIALS_JSON is in env, write it to /tmp/credentials.json
+if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
+    with open(GOOGLE_CLIENT_SECRETS_FILE, "w") as f:
+        f.write(os.environ["GOOGLE_CREDENTIALS_JSON"])
+
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
-# In-memory token store (use DB later)
+# In-memory token store (not persistent)
 USER_TOKENS = {}
+
 
 # -------------------
 # OAuth Login
@@ -30,7 +40,7 @@ def login():
         scopes=SCOPES,
         redirect_uri=os.environ.get(
             "OAUTH_REDIRECT_URI",
-            "https://unwanted-mail-sorter.onrender.com/oauth2callback"
+            "https://unwanted-mail-sorter.onrender.com/oauth2callback",  # default to Render URL
         ),
     )
     auth_url, _ = flow.authorization_url(
@@ -49,7 +59,7 @@ def oauth2callback():
         scopes=SCOPES,
         redirect_uri=os.environ.get(
             "OAUTH_REDIRECT_URI",
-            "https://unwanted-mail-sorter.onrender.com/oauth2callback"
+            "https://unwanted-mail-sorter.onrender.com/oauth2callback",
         ),
     )
     flow.fetch_token(authorization_response=request.url)
@@ -82,6 +92,7 @@ def get_user_info(creds):
 def get_gmail_service(user_id):
     if user_id not in USER_TOKENS:
         raise Exception(f"No token found for user {user_id}")
+
     creds = Credentials.from_authorized_user_info(USER_TOKENS[user_id])
     return build("gmail", "v1", credentials=creds)
 
@@ -101,7 +112,7 @@ def classify_email(subject, snippet):
 # -------------------
 @app.route("/")
 def home():
-    return jsonify({"message": "Backend is running ✅"})
+    return jsonify({"message": "Multi-user Gmail API backend is running ✅"})
 
 
 @app.route("/fetch-emails/<user_id>", methods=["GET"])
@@ -119,6 +130,8 @@ def fetch_emails(user_id):
             snippet = msg_obj.get("snippet", "")
 
             label, confidence = classify_email(subject, snippet)
+
+            logging.info(f"Email: {subject} | Label: {label} | Confidence: {confidence}")
             email_data.append({
                 "subject": subject,
                 "label": label,
