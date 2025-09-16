@@ -80,10 +80,11 @@ def oauth2callback():
 
 
 def get_or_create_label(service, label_name="Filtered-Unwanted"):
-    """Create label if it doesn’t exist"""
+    """Return Gmail label ID. Reuse if exists, else create."""
     labels = service.users().labels().list(userId="me").execute().get("labels", [])
     for lbl in labels:
-        if lbl["name"] == label_name:
+        if lbl["name"].lower() == label_name.lower():  # case-insensitive
+            logging.info(f"ℹ️ Using existing label: {lbl['name']} ({lbl['id']})")
             return lbl["id"]
 
     new_label = {
@@ -92,6 +93,7 @@ def get_or_create_label(service, label_name="Filtered-Unwanted"):
         "messageListVisibility": "show",
     }
     created = service.users().labels().create(userId="me", body=new_label).execute()
+    logging.info(f"✅ Created new label: {created['name']} ({created['id']})")
     return created["id"]
 
 
