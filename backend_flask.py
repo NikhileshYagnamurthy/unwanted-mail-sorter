@@ -80,11 +80,10 @@ def oauth2callback():
 
 
 def get_or_create_label(service, label_name="Filtered-Unwanted"):
-    """Return Gmail label ID. Reuse if exists, else create."""
+    """Create label if it doesn’t exist"""
     labels = service.users().labels().list(userId="me").execute().get("labels", [])
     for lbl in labels:
-        if lbl["name"].lower() == label_name.lower():  # case-insensitive
-            logging.info(f"ℹ️ Using existing label: {lbl['name']} ({lbl['id']})")
+        if lbl["name"] == label_name:
             return lbl["id"]
 
     new_label = {
@@ -93,7 +92,6 @@ def get_or_create_label(service, label_name="Filtered-Unwanted"):
         "messageListVisibility": "show",
     }
     created = service.users().labels().create(userId="me", body=new_label).execute()
-    logging.info(f"✅ Created new label: {created['name']} ({created['id']})")
     return created["id"]
 
 
@@ -125,7 +123,7 @@ def fetch_and_classify_emails(user):
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "")
             sender = next((h["value"] for h in headers if h["name"] == "From"), "")
 
-            # ----- SIMPLE CLASSIFIER (replace with ML later) -----
+            # ----- SIMPLE CLASSIFIER -----
             unwanted_keywords = ["facebook", "lovable", "notification"]
             label = "Wanted"
             if any(k.lower() in subject.lower() or k.lower() in sender.lower()
@@ -160,6 +158,16 @@ def whoami():
         return jsonify({"email": None})
     email = list(USER_TOKENS.keys())[0]
     return jsonify({"email": email})
+
+
+@app.route("/logout/<user>", methods=["POST"])
+def logout(user):
+    """Logout user by removing their token"""
+    if user in USER_TOKENS:
+        USER_TOKENS.pop(user, None)
+        logging.info(f"🚪 Logged out {user}")
+        return jsonify({"msg": f"Logged out {user}"})
+    return jsonify({"error": f"No session found for {user}"}), 400
 
 
 if __name__ == "__main__":
