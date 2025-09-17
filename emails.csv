@@ -15,6 +15,149 @@ subject,label
 "InterviewBit: Mock interview scheduled",Wanted
 "Smart Interviews: Coding test invitation",Wanted
 "Zoom Meeting: Project sync at 6 PM",Wanted
+"Your Amazon order #12345 has been shipped",Wanted
+"LinkedIn: You appeared in 5 searches this week",Wanted
+"Your flight booking is confirmed",Wanted
+"GitHub: New login from Chrome on Windows",Wanted
+"Invoice for your Spotify subscription",Wanted
+"Slack: New message in #general",Wanted
+"Jira ticket assigned: BUG-123",Wanted
+"Microsoft Teams: Meeting scheduled",Wanted
+"Dropbox: File shared with you",Wanted
+"PayPal: You received a payment",Wanted
+"Apple ID: Sign-in from Safari",Wanted
+"Zoom: Recording available for your meeting",Wanted
+"AWS Billing Alert: Monthly usage exceeded",Wanted
+"Google Docs: Document shared with you",Wanted
+"Figma: You were invited to a new file",Wanted
+"Asana: Task assigned to you",Wanted
+"Coursera: New course available",Wanted
+"Udemy: Your certificate is ready",Wanted
+"WhatsApp verification code",Wanted
+"Twitter: Login attempt from new device",Wanted
+"Instagram: Suspicious login detected",Wanted
+"Bank statement for September",Wanted
+"Salary credited to your account",Wanted
+"Office 365: License renewal notice",Wanted
+"Your package is out for delivery",Wanted
+"Google Calendar: Event reminder",Wanted
+"Outlook: Password change successful",Wanted
+"StackOverflow: Reply to your question",Wanted
+"Kaggle: Competition results available",Wanted
+"Medium: New story in your network",Wanted
+"Quora: New answer to your question",Wanted
+"Reddit: Your post received a reply",Wanted
+"ResearchGate: Article citation alert",Wanted
+"ArXiv: New paper in your field",Wanted
+"Pluralsight: Course progress reminder",Wanted
+"Netflix: Payment received",Wanted
+"Disney+: Your subscription is active",Wanted
+"Amazon Prime: Membership renewed",Wanted
+"Swiggy: Your order is on the way",Wanted
+"Zomato: Order delivered",Wanted
+"Ola: Ride invoice",Wanted
+"Uber: Trip receipt",Wanted
+"IRCTC: Ticket booking confirmation",Wanted
+"Flipkart: Order confirmed",Wanted
+"Myntra: Your return has been processed",Wanted
+"MakeMyTrip: Flight booking successful",Wanted
+"Goibibo: Hotel booking confirmed",Wanted
+"Cleartrip: Train booking complete",Wanted
+"Airbnb: Reservation confirmed",Wanted
+"Expedia: Trip details",Wanted
+"Indigo: Web check-in reminder",Wanted
+"Vistara: Boarding pass ready",Wanted
+"Emirates: Flight delayed notice",Wanted
+"Etihad: Travel advisory update",Wanted
+"Qatar Airways: Gate change info",Wanted
+"Spotify: Device login approved",Wanted
+"GitLab: Merge request assigned",Wanted
+"Bitbucket: Repository access granted",Wanted
+"Jenkins: Build failed",Wanted
+"CircleCI: Workflow completed",Wanted
+"Travis CI: Build passed",Wanted
+"ZoomInfo: Meeting invite",Wanted
+"Trello: Board invitation",Wanted
+"Notion: Shared workspace access",Wanted
+"Google Drive: File upload complete",Wanted
+"Dropbox: Space usage alert",Wanted
+"OneDrive: Sync complete",Wanted
+"Box: File request fulfilled",Wanted
+"Zoho Invoice: Payment reminder",Wanted
+"Freshdesk: Ticket resolved",Wanted
+"Salesforce: New lead assigned",Wanted
+"HubSpot: Contact updated",Wanted
+"Stripe: Payment succeeded",Wanted
+"Razorpay: Refund issued",Wanted
+"PhonePe: Transaction successful",Wanted
+"Google Pay: Money received",Wanted
+"Paytm: Recharge successful",Wanted
+"ICICI: Credit card bill due",Wanted
+"SBI: Fixed deposit matured",Wanted
+"HDFC: Loan EMI reminder",Wanted
+"Axis Bank: Debit card delivered",Wanted
+"Your AWS Free Tier usage report",Wanted
+"Heroku: App deployment successful",Wanted
+"Render: Service restarted",Wanted
+"DigitalOcean: Droplet created",Wanted
+"Linode: Invoice for your account",Wanted
+"Azure: Subscription renewal",Wanted
+"GCP: New billing statement",Wanted
+"OpenAI: API key created",Wanted
+"Hugging Face: Model access granted",Wanted
+"Kubernetes: Cluster health warning",Wanted
+"Docker Hub: Login alert",Wanted
+"Postman: Workspace invitation",Wanted
+"MongoDB Atlas: Backup completed",Wanted
+"MySQL: Slow query detected",Wanted
+"PostgreSQL: Connection alert",Wanted
+"Redis: Instance restarted",Wanted
+"Elasticsearch: Index created",Wanted
+"Prometheus: Alert triggered",Wanted
+"Grafana: Dashboard shared",Wanted
+"PagerDuty: Incident assigned",Wanted
+"New Jira comment added",Wanted
+"Google Classroom: Assignment graded",Wanted
+"EdX: New course announcement",Wanted
+"MIT OCW: Course material updated",Wanted
+"Skillshare: Your class is live",Wanted
+"Khan Academy: Progress report",Wanted
+"Duolingo: Daily practice reminder",Wanted
+"Rosetta Stone: Lesson completed",Wanted
+"Coursera: Certificate available",Wanted
+"Udacity: Nanodegree milestone reached",Wanted
+"Pluralsight: Quiz results available",Wanted
+"LinkedIn Learning: New recommendation",Wanted
+"edureka!: Webinar registration confirmed",Wanted
+"Scaler Academy: Batch starts tomorrow",Wanted
+"Your resume was viewed on Naukri",Wanted
+"TimesJobs: Job application received",Wanted
+"Indeed: Job alert - Software Engineer",Wanted
+"Monster: Your profile got shortlisted",Wanted
+"Glassdoor: Interview reviews available",Wanted
+"AngelList: Startup role match",Wanted
+"Internshala: Internship application update",Wanted
+"GitHub: Security alert on repo",Wanted
+"PyPI: Package upload successful",Wanted
+"NPM: New package published",Wanted
+"Conda: Environment created",Wanted
+"Anaconda: Package update available",Wanted
+"JetBrains: License activated",Wanted
+"VS Code: Extension update",Wanted
+"Eclipse: Workspace imported",Wanted
+"IntelliJ: Project indexed",Wanted
+"Android Studio: Build successful",Wanted
+"Xcode: Archive completed",Wanted
+"Unity: Asset imported",Wanted
+"Unreal Engine: Plugin installed",Wanted
+"Figma: Comment added to design",Wanted
+"Canva: Presentation ready",Wanted
+"Adobe Photoshop: File autosaved",Wanted
+"Illustrator: Update available",Wanted
+"Premiere Pro: Export complete",Wanted
+"After Effects: Render finished",Wanted
+"Lightroom: Sync successful",Wanted
+"Final Cut Pro: Library backed up",Wanted
 "How Lovable users make money with Lovable",Unwanted
 "You have 8 notifications about Sskroyal and others",Unwanted
 "We want to meet your expectations - tell us how!",Unwanted
@@ -36,3 +179,60 @@ subject,label
 "Boost your career with these online courses",Unwanted
 "University newsletter - September edition",Unwanted
 "50% discount on your next order",Unwanted
+"Congratulations! You won a free iPhone 🎁",Unwanted
+"Win a $1000 Amazon gift card",Unwanted
+"Hot singles in your area waiting!",Unwanted
+"Claim your lottery prize now",Unwanted
+"Exclusive deal: 80% OFF limited time",Unwanted
+"Limited time offer: Buy 1 Get 1 Free",Unwanted
+"New discount just for you",Unwanted
+"Final reminder: Sale ends tonight",Unwanted
+"Unlock premium features for free",Unwanted
+"Upgrade your account to gold tier",Unwanted
+"Your subscription is expiring soon",Unwanted
+"Click here to avoid suspension",Unwanted
+"Verify your account immediately",Unwanted
+"Action required: Update billing info",Unwanted
+"Act now to keep your account safe",Unwanted
+"Attention: Urgent notice",Unwanted
+"Your account will be deleted soon",Unwanted
+"Recover your password instantly",Unwanted
+"Suspicious login attempt detected",Unwanted
+"Get rich quick with crypto investments",Unwanted
+"New Bitcoin trading platform",Unwanted
+"Earn money from home in 3 easy steps",Unwanted
+"Double your income with this trick",Unwanted
+"Crypto newsletter: Top 5 coins",Unwanted
+"Stock alert: Buy these shares today",Unwanted
+"Daily investment tips",Unwanted
+"Boost your portfolio with AI",Unwanted
+"New real estate opportunity",Unwanted
+"Grow your wealth with passive income",Unwanted
+"Forex signals: Guaranteed profit",Unwanted
+"Financial freedom in 30 days",Unwanted
+"Exclusive webinar on making millions",Unwanted
+"Watch this video to change your life",Unwanted
+"Shocking secrets doctors don’t want you to know",Unwanted
+"Miracle cure for weight loss",Unwanted
+"Lose belly fat in 2 weeks",Unwanted
+"10 tips for glowing skin",Unwanted
+"Best anti-aging solution",Unwanted
+"Hair growth secrets revealed",Unwanted
+"Fitness plan for 2025",Unwanted
+"Top diet to burn fat fast",Unwanted
+"Celebrity weight loss transformation",Unwanted
+"Natural remedies for health",Unwanted
+"Best home workout plan",Unwanted
+"Get free followers on Instagram",Unwanted
+"1000 subscribers for free",Unwanted
+"Boost your TikTok views instantly",Unwanted
+"More likes on your Facebook posts",Unwanted
+"Cheap YouTube subscribers",Unwanted
+"Snapchat premium free trial",Unwanted
+"Dating site invitation",Unwanted
+"Meet singles in your city",Unwanted
+"Chat with models online",Unwanted
+"Romantic match found for you",Unwanted
+"Adult content access granted",Unwanted
+"NSFW video waiting",Unwanted
+"Exclusive photos just for you",Unwanted
