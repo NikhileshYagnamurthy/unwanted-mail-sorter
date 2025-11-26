@@ -1,18 +1,88 @@
+/* General */
 body {
-  font-family: Arial, sans-serif;
-  padding: 10px;
-  width: 300px;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  padding: 15px;
+  width: 320px;
+  background: #fafafa;
+  color: #333;
 }
 
+/* Headings */
 h2 {
   font-size: 18px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  text-align: center;
+  color: #222;
+}
+
+/* Buttons */
+button, a {
+  display: inline-block;
+  margin: 6px 4px;
+  padding: 8px 14px;
+  font-size: 14px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+  text-decoration: none;
+  color: white;
+}
+
+button:hover, a:hover {
+  transform: translateY(-1px);
+}
+
+/* Specific button colors */
+#refresh { background: #0078d7; }   /* Blue */
+#login { background: #28a745; }     /* Green */
+#logout { background: #d9534f; }    /* Red */
+a { background: #6c757d; }          /* Grey link-button */
+
+/* Emails list */
+#emails {
+  margin-top: 12px;
 }
 
 .email-card {
-  background: #f9f9f9;
-  padding: 8px;
+  background: white;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  transition: transform 0.15s ease;
+}
+
+.email-card:hover {
+  transform: scale(1.02);
+}
+
+.email-card p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+/* Settings Page */
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+input[type="number"] {
+  width: 100%;
+  padding: 6px 10px;
+  margin-bottom: 10px;
   border-radius: 6px;
-  margin-bottom: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border: 1px solid #ccc;
+}
+
+#save {
+  width: 100%;
+  background: #0078d7;
+}
+
+#status {
+  margin-top: 8px;
+  font-size: 13px;
 }
