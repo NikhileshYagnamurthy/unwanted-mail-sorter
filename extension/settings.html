@@ -1,15 +1,323 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>⚙️ Settings</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8"/>
+  <title>InboxAI — Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f0f13;
+      --surface: #18181f;
+      --surface2:#22222c;
+      --border:  #2e2e3a;
+      --text:    #f0f0f5;
+      --text-2:  #9090a8;
+      --text-3:  #5a5a72;
+      --accent:  #7c6aff;
+      --accent-2:#a08bff;
+      --green:   #34d399;
+      --red:     #f87171;
+    }
+
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 32px 24px 60px;
+    }
+
+    .container { max-width: 460px; margin: 0 auto; }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 28px;
+    }
+    .logo-mark { font-size: 20px; color: var(--accent); }
+    .logo-text  { font-size: 18px; font-weight: 600; }
+
+    h2 {
+      font-size: 11px;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 12px;
+      margin-top: 28px;
+    }
+    h2:first-of-type { margin-top: 0; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px 0;
+      margin-bottom: 8px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .setting-row:last-child { border-bottom: none; }
+
+    .setting-info { flex: 1; }
+    .setting-label { font-size: 13.5px; font-weight: 500; }
+    .setting-desc  { font-size: 11.5px; color: var(--text-3); margin-top: 2px; line-height: 1.4; }
+
+    /* Toggle switch */
+    .toggle { position: relative; width: 38px; height: 22px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--text-3);
+      top: 2px; left: 2px;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .toggle input:checked + .toggle-slider {
+      background: rgba(124,106,255,.2);
+      border-color: var(--accent);
+    }
+    .toggle input:checked + .toggle-slider::before {
+      transform: translateX(16px);
+      background: var(--accent);
+    }
+
+    /* Number input */
+    .num-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      width: 72px;
+      text-align: center;
+    }
+    .num-input:focus { outline: none; border-color: var(--accent); }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      border-radius: 7px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 10px 20px;
+      transition: opacity 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-danger {
+      background: rgba(248,113,113,.12);
+      color: var(--red);
+      border: 1px solid rgba(248,113,113,.3);
+    }
+    .btn-danger:hover { background: rgba(248,113,113,.22); }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    #statusMsg { font-size: 12px; color: var(--green); }
+
+    /* Premium card */
+    .premium-card {
+      background: linear-gradient(135deg,rgba(124,106,255,.1),rgba(160,139,255,.04));
+      border: 1px solid rgba(124,106,255,.3);
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 8px;
+    }
+    .premium-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .premium-header h3 { font-size: 15px; font-weight: 600; }
+    .premium-badge {
+      font-size: 10px;
+      font-weight: 600;
+      background: var(--accent);
+      color: #fff;
+      padding: 2px 9px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+    }
+    .feature-list { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+    .feature-item {
+      font-size: 13px;
+      color: var(--text-2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .feature-item::before { content: "✦"; color: var(--accent); font-size: 10px; }
+
+    #premiumStatus {
+      font-size: 12px;
+      color: var(--green);
+      margin-top: 10px;
+      display: none;
+    }
+  </style>
 </head>
 <body>
-  <h2>⚙️ Extension Settings</h2>
-  <label for="threshold">Confidence Threshold (0–1):</label>
-  <input type="number" id="threshold" step="0.05" min="0" max="1">
-  <button id="save">💾 Save</button>
-  <p id="status"></p>
-  <script src="settings.js"></script>
+<div class="container">
+
+  <div class="logo">
+    <span class="logo-mark">✦</span>
+    <span class="logo-text">InboxAI Settings</span>
+  </div>
+
+  <!-- Classification -->
+  <h2>Classification</h2>
+  <div class="card">
+    <div class="setting-row">
+      <div class="setting-info">
+        <div class="setting-label">Auto-archive promotions</div>
+        <div class="setting-desc">Remove promotional emails from inbox automatically on scan</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoArchivePromo" checked/>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info">
+        <div class="setting-label">Auto-archive newsletters</div>
+        <div class="setting-desc">Automatically archive newsletters during scan</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoArchiveNews" checked/>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info">
+        <div class="setting-label">Show reasons on cards</div>
+        <div class="setting-desc">Double-click an email card to see why it was classified</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="showReasons" checked/>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Scan -->
+  <h2>Scan</h2>
+  <div class="card">
+    <div class="setting-row">
+      <div class="setting-info">
+        <div class="setting-label">Emails per scan</div>
+        <div class="setting-desc">How many emails to fetch per scan (max 50 on free tier)</div>
+      </div>
+      <input type="number" id="scanCount" class="num-input" min="5" max="50" step="5" value="25"/>
+    </div>
+  </div>
+
+  <!-- Premium -->
+  <h2>Premium</h2>
+  <div class="premium-card">
+    <div class="premium-header">
+      <h3>Upgrade to Premium</h3>
+      <span class="premium-badge">PRO</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature-item">Unlimited scans per day</div>
+      <div class="feature-item">Bulk cleanup up to 500 emails at once</div>
+      <div class="feature-item">Deep AI explanations for suspicious emails</div>
+      <div class="feature-item">Advanced inbox analytics</div>
+    </div>
+    <button class="btn btn-primary" id="btnUpgrade">Upgrade — $4.99/mo</button>
+    <p id="premiumStatus">✦ You are now a premium member!</p>
+  </div>
+
+  <!-- Save -->
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btnSave">Save Settings</button>
+    <span id="statusMsg"></span>
+  </div>
+
+</div>
+
+<script>
+const BACKEND = "https://unwanted-mail-sorter.onrender.com";
+
+// Load saved settings from Chrome storage
+chrome.storage.local.get(
+  ["autoArchivePromo", "autoArchiveNews", "showReasons", "scanCount"],
+  s => {
+    if (s.autoArchivePromo !== undefined)
+      document.getElementById("autoArchivePromo").checked = s.autoArchivePromo;
+    if (s.autoArchiveNews !== undefined)
+      document.getElementById("autoArchiveNews").checked = s.autoArchiveNews;
+    if (s.showReasons !== undefined)
+      document.getElementById("showReasons").checked = s.showReasons;
+    if (s.scanCount !== undefined)
+      document.getElementById("scanCount").value = s.scanCount;
+  }
+);
+
+// Save settings
+document.getElementById("btnSave").addEventListener("click", () => {
+  chrome.storage.local.set({
+    autoArchivePromo: document.getElementById("autoArchivePromo").checked,
+    autoArchiveNews:  document.getElementById("autoArchiveNews").checked,
+    showReasons:      document.getElementById("showReasons").checked,
+    scanCount:        Number(document.getElementById("scanCount").value),
+  });
+  const msg = document.getElementById("statusMsg");
+  msg.textContent = "✓ Saved";
+  setTimeout(() => msg.textContent = "", 2000);
+});
+
+// Upgrade (stub — wire to Stripe later)
+document.getElementById("btnUpgrade").addEventListener("click", async () => {
+  try {
+    const res  = await fetch(`${BACKEND}/upgrade`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await res.json();
+    if (data.is_premium) {
+      document.getElementById("premiumStatus").style.display = "block";
+      document.getElementById("btnUpgrade").disabled = true;
+      document.getElementById("btnUpgrade").textContent = "✦ Premium Active";
+    }
+  } catch (e) {
+    alert("Could not connect to server. Make sure you are logged in.");
+  }
+});
+</script>
 </body>
 </html>
