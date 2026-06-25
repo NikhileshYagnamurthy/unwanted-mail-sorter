@@ -17,7 +17,10 @@ from googleapiclient.discovery import build
 from scorer import score_email, batch_score, inbox_analytics
 
 app = Flask(__name__)
-CORS(app, origins=["chrome-extension://*", "http://localhost:*"])
+CORS(app, origins=[
+    "chrome-extension://kbpfhmjagmbbmjcofeghmdkdkchgeljd",
+    "http://localhost:*"
+])
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
 
 logging.basicConfig(level=logging.INFO)
