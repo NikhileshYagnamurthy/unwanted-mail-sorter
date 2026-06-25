@@ -53,13 +53,37 @@ function showView(view) {
     view.classList.remove("hidden");
 }
 
+// ── API calls via background service worker ──────────────────────────────────
 async function api(path, opts = {}) {
-    const res = await fetch(`${BACKEND}${path}`, {
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        ...opts,
+    return new Promise((resolve, reject) => {
+        const url = `${BACKEND}${path}`;
+        const method = opts.method || "GET";
+        const body = opts.body || null;
+        const headers = opts.headers || { "Content-Type": "application/json" };
+        
+        console.log("Sending API request to background:", url);
+        
+        chrome.runtime.sendMessage({
+            action: "apiRequest",
+            url: url,
+            method: method,
+            headers: headers,
+            body: body
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error("chrome.runtime.lastError:", chrome.runtime.lastError);
+                reject(new Error(chrome.runtime.lastError.message));
+                return;
+            }
+            if (response && response.success) {
+                console.log("API response received:", response.data);
+                resolve(response.data);
+            } else {
+                console.error("API Error:", response?.error);
+                reject(new Error(response?.error || "API request failed"));
+            }
+        });
     });
-    return res.json();
 }
 
 // ── Check Auth ────────────────────────────────────────────────────────────────
@@ -93,12 +117,13 @@ async function checkAuth() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    console.log("Popup loaded, checking auth...");
     checkAuth();
 });
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 btnLogin.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${BACKEND}/login` });
+    chrome.runtime.sendMessage({ action: "openLogin" });
     showToast("Login window opened. Complete login and come back.", "", 5000);
 });
 
