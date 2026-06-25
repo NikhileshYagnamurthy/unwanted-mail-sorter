@@ -19,7 +19,7 @@ from scorer import score_email, batch_score, inbox_analytics
 app = Flask(__name__)
 
 # ── CORS: Allow all origins (like your working version) ──
-CORS(app)  # This worked before, keep it simple
+CORS(app, supports_credentials=True)
 
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
 
