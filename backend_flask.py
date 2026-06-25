@@ -17,10 +17,10 @@ from googleapiclient.discovery import build
 from scorer import score_email, batch_score, inbox_analytics
 
 app = Flask(__name__)
-CORS(app, origins=[
-    "chrome-extension://kbpfhmjagmbbmjcofeghmdkdkchgeljd",
-    "http://localhost:*"
-])
+
+# ── CORS: Allow all origins (like your working version) ──
+CORS(app)  # This worked before, keep it simple
+
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
 
 logging.basicConfig(level=logging.INFO)
@@ -28,11 +28,11 @@ logging.basicConfig(level=logging.INFO)
 # ── Config ─────────────────────────────────────────────────────────────────────
 BACKEND_URL = "https://unwanted-mail-sorter.onrender.com"
 GOOGLE_CLIENT_SECRETS_FILE = "/tmp/credentials.json"
+
+# ── SCOPES: Only the 2 that worked before ──
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "openid",
 ]
 
 FREE_TIER_DAILY_SCANS = 5
