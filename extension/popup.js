@@ -1,487 +1,328 @@
-/* InboxAI Popup Styles */
+// popup.js — InboxAI Chrome Extension
+"use strict";
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+const BACKEND = "https://unwanted-mail-sorter.onrender.com";
 
-:root {
-  --bg:        #0f0f13;
-  --surface:   #18181f;
-  --surface2:  #22222c;
-  --border:    #2e2e3a;
-  --text:      #f0f0f5;
-  --text-2:    #9090a8;
-  --text-3:    #5a5a72;
-  --accent:    #7c6aff;
-  --accent-2:  #a08bff;
-  --green:     #34d399;
-  --orange:    #fb923c;
-  --red:       #f87171;
-  --yellow:    #fbbf24;
-  --radius:    10px;
-  --radius-sm: 6px;
-  font-family: 'DM Sans', system-ui, sans-serif;
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const $           = id => document.getElementById(id);
+const viewLogin   = $("viewLogin");
+const viewDash    = $("viewDashboard");
+const btnLogin    = $("btnLogin");
+const btnScan     = $("btnScan");
+const btnCleanup  = $("btnCleanup");
+const btnCleanLbl = $("btnCleanupLabel");
+const btnLogout   = $("btnLogout");
+const btnSettings = $("btnSettings");
+const emailList   = $("emailList");
+const emptyState  = $("emptyState");
+const statsBar    = $("statsBar");
+const usageBar    = $("usageBar");
+const loadingOvl  = $("loadingOverlay");
+const loadingMsg  = $("loadingMsg");
+const toast       = $("toast");
+const userBadge   = $("userBadge");
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedIds = new Set();
+let toastTimer  = null;
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+function showToast(msg, type = "", duration = 3000) {
+  toast.textContent = msg;
+  toast.className = `toast ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.className = "toast hidden";
+  }, duration);
 }
 
-body {
-  width: 360px;
-  min-height: 480px;
-  max-height: 600px;
-  background: var(--bg);
-  color: var(--text);
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+function showLoading(msg = "Scanning your inbox…") {
+  loadingMsg.textContent = msg;
+  loadingOvl.classList.remove("hidden");
 }
 
-/* ── HEADER ─────────────────────────────────────────────────────── */
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+function hideLoading() {
+  loadingOvl.classList.add("hidden");
 }
 
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+function showView(view) {
+  viewLogin.classList.add("hidden");
+  viewDash.classList.add("hidden");
+  view.classList.remove("hidden");
 }
 
-.logo-mark {
-  font-size: 16px;
-  color: var(--accent);
-  animation: pulse 3s ease infinite;
+async function api(path, opts = {}) {
+  const res = await fetch(`${BACKEND}${path}`, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  return res.json();
 }
 
-.logo-text {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.3px;
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+function truncate(str, n) {
+  return str.length > n ? str.slice(0, n) + "…" : str;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const data = await api("/whoami");
+    if (data && data.email) {
+      userBadge.textContent = data.email;
+      userBadge.classList.remove("hidden");
+      showView(viewDash);
+      updateUsageBar(data);
+    } else {
+      showView(viewLogin);
+    }
+  } catch (e) {
+    showView(viewLogin);
+  }
 }
 
-.user-badge {
-  font-size: 11px;
-  color: var(--text-2);
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  padding: 3px 8px;
-  border-radius: 20px;
-  max-width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+// ── Login ─────────────────────────────────────────────────────────────────────
+btnLogin.addEventListener("click", () => {
+  chrome.runtime.sendMessage({ action: "openLogin" });
+
+  // Poll backend every 2 seconds to detect when login completes
+  const poll = setInterval(async () => {
+    try {
+      const data = await api("/whoami");
+      if (data && data.email) {
+        clearInterval(poll);
+        userBadge.textContent = data.email;
+        userBadge.classList.remove("hidden");
+        showView(viewDash);
+        updateUsageBar(data);
+        showToast("Logged in successfully!", "success");
+      }
+    } catch (e) {
+      // still waiting
+    }
+  }, 2000);
+
+  // Stop polling after 2 minutes
+  setTimeout(() => clearInterval(poll), 120000);
+});
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+btnLogout.addEventListener("click", async () => {
+  await api("/logout", { method: "POST" }).catch(() => {});
+  userBadge.classList.add("hidden");
+  selectedIds.clear();
+  emailList.innerHTML = "";
+  emailList.appendChild(emptyState);
+  emptyState.classList.remove("hidden");
+  statsBar.classList.add("hidden");
+  usageBar.classList.add("hidden");
+  showView(viewLogin);
+  showToast("Signed out");
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+btnSettings.addEventListener("click", () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
+});
+
+// ── Usage bar ─────────────────────────────────────────────────────────────────
+function updateUsageBar(data) {
+  if (data.is_premium) {
+    usageBar.classList.add("hidden");
+    return;
+  }
+  const FREE = 5;
+  const used = data.scans_today || 0;
+  const remaining = Math.max(0, FREE - used);
+  $("usageText").textContent = `${remaining} free scan${remaining !== 1 ? "s" : ""} remaining today`;
+  $("usageFill").style.width = `${Math.min(100, (used / FREE) * 100)}%`;
+  usageBar.classList.remove("hidden");
 }
 
-.icon-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-2);
-  cursor: pointer;
-  font-size: 16px;
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s, background 0.15s;
-  line-height: 1;
-}
-.icon-btn:hover { color: var(--text); background: var(--surface2); }
+// ── Scan ──────────────────────────────────────────────────────────────────────
+btnScan.addEventListener("click", async () => {
+  showLoading("Scanning your inbox…");
+  btnScan.disabled = true;
+  selectedIds.clear();
 
-/* ── VIEWS ───────────────────────────────────────────────────────── */
-.view { padding: 0; }
-.hidden { display: none !important; }
+  try {
+    const data = await api("/scan-emails?max=25");
 
-/* ── LOGIN ───────────────────────────────────────────────────────── */
-.login-hero {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 32px 24px 28px;
-  gap: 12px;
-}
+    if (data.error) {
+      hideLoading();
+      if (data.error === "Daily scan limit reached") {
+        showToast("Daily limit reached. Upgrade for unlimited scans.", "error", 5000);
+      } else {
+        showToast(data.error, "error");
+      }
+      btnScan.disabled = false;
+      return;
+    }
 
-.hero-icon {
-  font-size: 36px;
-  color: var(--accent);
-  animation: pulse 3s ease infinite;
-}
+    const emails = data.emails || [];
+    renderEmails(emails);
+    renderStats(data.analytics);
 
-.login-hero h1 {
-  font-size: 26px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.5px;
-}
+    // Refresh usage bar
+    const whoami = await api("/whoami").catch(() => null);
+    if (whoami) updateUsageBar(whoami);
 
-.hero-sub {
-  font-size: 13px;
-  color: var(--text-2);
-  line-height: 1.5;
-  max-width: 260px;
-}
+    const count = emails.length;
+    showToast(`✦ Scanned ${count} email${count !== 1 ? "s" : ""}`, "success");
 
-.login-note {
-  font-size: 11px;
-  color: var(--text-3);
-  margin-top: 4px;
+  } catch (e) {
+    showToast("Connection failed. Is the backend awake?", "error");
+  } finally {
+    hideLoading();
+    btnScan.disabled = false;
+  }
+});
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function renderStats(analytics) {
+  if (!analytics) return;
+  $("statTotal").textContent    = analytics.total ?? 0;
+  $("statClutter").textContent  = `${analytics.clutter_score ?? 0}%`;
+  $("statPhishing").textContent = analytics.phishing_count ?? 0;
+  $("statClean").textContent    = analytics.archiveable ?? 0;
+  statsBar.classList.remove("hidden");
 }
 
-/* ── STATS BAR ───────────────────────────────────────────────────── */
-.stats-bar {
-  display: flex;
-  gap: 6px;
-  padding: 12px 14px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+// ── Badge colour map ──────────────────────────────────────────────────────────
+const BADGE_CLASS = {
+  "Promotion":     "badge-promotion",
+  "Newsletter":    "badge-newsletter",
+  "Phishing Risk": "badge-phishing",
+  "Security Alert":"badge-security",
+  "OTP / Auth":    "badge-security",
+  "Finance":       "badge-finance",
+  "Order Update":  "badge-finance",
+  "Recruiter":     "badge-recruiter",
+  "Social Update": "badge-social",
+  "Meeting / Event":"badge-important",
+  "Important":     "badge-important",
+};
+
+// ── Render email list ─────────────────────────────────────────────────────────
+function renderEmails(emails) {
+  emailList.innerHTML = "";
+
+  if (!emails.length) {
+    emailList.appendChild(emptyState);
+    emptyState.classList.remove("hidden");
+    btnCleanup.classList.add("hidden");
+    return;
+  }
+
+  emptyState.classList.add("hidden");
+
+  emails.forEach(email => {
+    const card = document.createElement("div");
+    card.className = "email-card";
+    card.dataset.id = email.id;
+
+    const badgeClass = BADGE_CLASS[email.category] || "badge-default";
+
+    const reasonTags = (email.reasons || []).map(r => {
+      const isWarn = r.toLowerCase().includes("suspicious") ||
+                     r.toLowerCase().includes("spoofing") ||
+                     r.toLowerCase().includes("urgency");
+      return `<span class="reason-tag ${isWarn ? "warn" : ""}">${escHtml(r)}</span>`;
+    }).join("");
+
+    card.innerHTML = `
+      <div class="card-top">
+        <div class="card-check"></div>
+        <div class="card-info">
+          <div class="card-subject" title="${escHtml(email.subject)}">${escHtml(email.subject)}</div>
+          <div class="card-from">${escHtml(truncate(email.from || "", 42))}</div>
+        </div>
+        <span class="card-badge ${badgeClass}">${escHtml(email.category)}</span>
+      </div>
+      <div class="card-reasons">${reasonTags}</div>
+      <div class="confidence-bar">
+        <div class="conf-track">
+          <div class="conf-fill" style="width:${email.confidence}%"></div>
+        </div>
+        <span class="conf-label">${email.confidence}%</span>
+      </div>
+    `;
+
+    // Click = select/deselect
+    card.addEventListener("click", () => toggleSelect(card, email.id));
+
+    // Double-click = expand reasons
+    card.addEventListener("dblclick", e => {
+      e.stopPropagation();
+      card.classList.toggle("expanded");
+    });
+
+    emailList.appendChild(card);
+  });
 }
 
-.stat-pill {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 4px;
+// ── Select / deselect ─────────────────────────────────────────────────────────
+function toggleSelect(card, id) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    card.classList.remove("selected");
+  } else {
+    selectedIds.add(id);
+    card.classList.add("selected");
+  }
+  updateCleanupButton();
 }
 
-.stat-num {
-  font-family: 'DM Mono', monospace;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--accent-2);
+function updateCleanupButton() {
+  if (selectedIds.size === 0) {
+    btnCleanup.classList.add("hidden");
+  } else {
+    btnCleanup.classList.remove("hidden");
+    btnCleanLbl.textContent =
+      `Archive ${selectedIds.size} email${selectedIds.size !== 1 ? "s" : ""}`;
+  }
 }
 
-.stat-pill.accent-orange .stat-num { color: var(--orange); }
-.stat-pill.accent-red .stat-num    { color: var(--red); }
-.stat-pill.accent-green .stat-num  { color: var(--green); }
+// ── Cleanup ───────────────────────────────────────────────────────────────────
+btnCleanup.addEventListener("click", async () => {
+  if (selectedIds.size === 0) return;
 
-.stat-label {
-  font-size: 9px;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
+  showLoading(`Archiving ${selectedIds.size} emails…`);
+  btnCleanup.disabled = true;
 
-/* ── USAGE BAR ───────────────────────────────────────────────────── */
-.usage-bar {
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border);
-}
+  try {
+    const data = await api("/cleanup", {
+      method: "POST",
+      body: JSON.stringify({ message_ids: [...selectedIds] }),
+    });
 
-.usage-label {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 5px;
-  font-size: 11px;
-  color: var(--text-2);
-}
+    if (data.error) {
+      showToast(data.error, "error", 5000);
+    } else {
+      showToast(`✓ Archived ${data.cleaned} emails`, "success");
+      // Remove archived cards from UI
+      selectedIds.forEach(id => {
+        const card = document.querySelector(`.email-card[data-id="${id}"]`);
+        if (card) card.remove();
+      });
+      selectedIds.clear();
+      updateCleanupButton();
+    }
+  } catch (e) {
+    showToast("Cleanup failed. Please retry.", "error");
+  } finally {
+    hideLoading();
+    btnCleanup.disabled = false;
+  }
+});
 
-.upgrade-link {
-  font-size: 11px;
-  color: var(--accent-2);
-  text-decoration: none;
-  font-weight: 500;
-}
-.upgrade-link:hover { text-decoration: underline; }
-
-.usage-track {
-  height: 3px;
-  background: var(--surface2);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.usage-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  border-radius: 2px;
-  transition: width 0.4s ease;
-}
-
-/* ── ACTIONS ─────────────────────────────────────────────────────── */
-.actions {
-  display: flex;
-  gap: 8px;
-  padding: 12px 14px;
-  align-items: center;
-}
-
-/* ── BUTTONS ─────────────────────────────────────────────────────── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 8px 14px;
-  transition: opacity 0.15s, transform 0.1s;
-  white-space: nowrap;
-}
-
-.btn:active { transform: scale(0.97); }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
-
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-  flex: 1;
-}
-.btn-primary:hover:not(:disabled) { background: var(--accent-2); }
-
-.btn-danger {
-  background: rgba(248, 113, 113, 0.15);
-  color: var(--red);
-  border: 1px solid rgba(248, 113, 113, 0.3);
-}
-.btn-danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.25); }
-
-.btn-ghost {
-  background: transparent;
-  color: var(--text-3);
-  border: 1px solid var(--border);
-  padding: 8px 12px;
-  font-size: 12px;
-}
-.btn-ghost:hover { color: var(--text-2); border-color: var(--text-3); }
-
-.btn-lg {
-  padding: 12px 24px;
-  font-size: 14px;
-  width: 100%;
-  justify-content: center;
-  gap: 10px;
-}
-
-.btn-icon { font-size: 14px; }
-
-/* ── EMAIL LIST ──────────────────────────────────────────────────── */
-.email-list {
-  padding: 0 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 32px 0;
-  color: var(--text-3);
-  text-align: center;
-}
-
-.empty-icon { font-size: 28px; }
-.empty-state p { font-size: 13px; line-height: 1.5; }
-
-/* ── EMAIL CARD ──────────────────────────────────────────────────── */
-.email-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.email-card:hover { border-color: var(--accent); background: var(--surface2); }
-
-.email-card.selected {
-  border-color: var(--accent);
-  background: rgba(124, 106, 255, 0.08);
-}
-
-.card-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.card-check {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1.5px solid var(--border);
-  flex-shrink: 0;
-  margin-top: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  transition: all 0.15s;
-}
-
-.email-card.selected .card-check {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-}
-.email-card.selected .card-check::after { content: "✓"; }
-
-.card-info { flex: 1; min-width: 0; }
-
-.card-subject {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 2px;
-}
-
-.card-from {
-  font-size: 11px;
-  color: var(--text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.card-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 20px;
-}
-
-/* Badge colors */
-.badge-promotion  { background: rgba(251,146,60,.15);  color: var(--orange); }
-.badge-newsletter { background: rgba(124,106,255,.15); color: var(--accent-2); }
-.badge-phishing   { background: rgba(248,113,113,.2);  color: var(--red); }
-.badge-security   { background: rgba(251,191,36,.15);  color: var(--yellow); }
-.badge-finance    { background: rgba(52,211,153,.15);  color: var(--green); }
-.badge-recruiter  { background: rgba(96,165,250,.15);  color: #60a5fa; }
-.badge-social     { background: rgba(167,139,250,.15); color: #a78bfa; }
-.badge-important  { background: rgba(52,211,153,.2);   color: var(--green); }
-.badge-default    { background: var(--surface2);       color: var(--text-2); }
-
-/* Expandable reasons */
-.card-reasons {
-  margin-top: 7px;
-  display: none;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.email-card.expanded .card-reasons { display: flex; }
-
-.reason-tag {
-  font-size: 10px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-  padding: 2px 7px;
-  border-radius: 20px;
-}
-
-.reason-tag.warn {
-  border-color: rgba(248,113,113,.4);
-  color: var(--red);
-}
-
-/* Confidence bar */
-.confidence-bar {
-  margin-top: 6px;
-  display: none;
-  align-items: center;
-  gap: 7px;
-}
-
-.email-card.expanded .confidence-bar { display: flex; }
-
-.conf-track {
-  flex: 1;
-  height: 2px;
-  background: var(--surface2);
-  border-radius: 1px;
-  overflow: hidden;
-}
-
-.conf-fill {
-  height: 100%;
-  border-radius: 1px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-}
-
-.conf-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  color: var(--text-3);
-  flex-shrink: 0;
-}
-
-/* ── LOADING OVERLAY ─────────────────────────────────────────────── */
-.loading-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15,15,19,.85);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  z-index: 100;
-  backdrop-filter: blur(4px);
-}
-
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 2.5px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.loading-overlay p {
-  font-size: 13px;
-  color: var(--text-2);
-}
-
-/* ── TOAST ───────────────────────────────────────────────────────── */
-.toast {
-  position: fixed;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 12.5px;
-  padding: 8px 16px;
-  border-radius: 20px;
-  z-index: 200;
-  white-space: nowrap;
-  box-shadow: 0 4px 20px rgba(0,0,0,.4);
-}
-
-.toast.error   { border-color: rgba(248,113,113,.5); color: var(--red); }
-.toast.success { border-color: rgba(52,211,153,.5);  color: var(--green); }
+// ── Start ─────────────────────────────────────────────────────────────────────
+init();
