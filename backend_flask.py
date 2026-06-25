@@ -1,6 +1,6 @@
 """
 InboxAI — Flask Backend
-Your Render URL: https://unwanted-mail-sorter.onrender.com
+Render URL: https://unwanted-mail-sorter.onrender.com
 """
 
 import os
@@ -34,12 +34,14 @@ SCOPES = [
 
 FREE_TIER_DAILY_SCANS = 5
 
-# Write credentials.json from environment variable
+# Write credentials.json from environment variable set on Render
 if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
     with open(GOOGLE_CLIENT_SECRETS_FILE, "w") as f:
         f.write(os.environ["GOOGLE_CREDENTIALS_JSON"])
 
 # ── In-memory stores ───────────────────────────────────────────────────────────
+# NOTE: These reset on every Render cold start (free tier sleeps).
+# Replace with Supabase later when you have real users.
 USER_TOKENS = {}   # { email: creds_json_string }
 USAGE_LOG   = {}   # { email: { date, scans, is_premium } }
 
@@ -55,8 +57,10 @@ AI_LABELS = [
 def _creds(email):
     return Credentials.from_authorized_user_info(json.loads(USER_TOKENS[email]))
 
+
 def _service(email):
     return build("gmail", "v1", credentials=_creds(email))
+
 
 def _get_or_create_label(service, name):
     labels = service.users().labels().list(userId="me").execute().get("labels", [])
@@ -73,11 +77,13 @@ def _get_or_create_label(service, name):
     ).execute()
     return created["id"]
 
+
 def _ensure_ai_labels(service):
     label_map = {}
     for name in AI_LABELS:
         label_map[name] = _get_or_create_label(service, name)
     return label_map
+
 
 def _check_usage(email):
     today = str(date.today())
@@ -86,6 +92,7 @@ def _check_usage(email):
         entry = {"date": today, "scans": 0, "is_premium": entry.get("is_premium", False)}
     USAGE_LOG[email] = entry
     return entry
+
 
 def _current_user():
     return list(USER_TOKENS.keys())[0] if USER_TOKENS else None
@@ -124,11 +131,14 @@ def oauth2callback():
         USER_TOKENS[email] = creds.to_json()
         logging.info(f"Authenticated: {email}")
         return """
-        <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f13;color:#fff;">
-        <h2 style="color:#7c6aff;">✦ Login Successful!</h2>
-        <p>You can close this tab and go back to the extension.</p>
-        <script>setTimeout(()=>window.close(),2000)</script>
-        </body></html>
+        <html>
+        <body style="font-family:sans-serif;text-align:center;padding:60px;
+                     background:#0f0f13;color:#fff;">
+          <h2 style="color:#7c6aff;">&#10022; Login Successful!</h2>
+          <p>You can close this tab and go back to the extension.</p>
+          <script>setTimeout(()=>window.close(), 2000)</script>
+        </body>
+        </html>
         """
     except Exception as e:
         logging.exception("OAuth failed")
@@ -208,7 +218,7 @@ def scan_emails():
                 },
             })
 
-        # Score all emails locally
+        # Score all emails locally — zero API cost
         scored = batch_score(raw_emails)
 
         # Apply Gmail labels
@@ -223,7 +233,7 @@ def scan_emails():
                         userId="me", id=e["id"], body=body
                     ).execute()
                 except Exception:
-                    pass
+                    pass  # don't crash full scan on one email failure
 
         analytics = inbox_analytics(scored)
 
@@ -284,7 +294,7 @@ def cleanup():
 
 @app.route("/explain-email", methods=["POST"])
 def explain_email():
-    """Premium only — calls OpenAI for deep email explanation."""
+    """Premium only — calls OpenAI for a plain-English email explanation."""
     email = _current_user()
     if not email:
         return jsonify({"error": "Not authenticated"}), 401
@@ -300,11 +310,11 @@ def explain_email():
     if not openai_key:
         return jsonify({"error": "OpenAI not configured on server"}), 500
 
-    data     = request.json or {}
-    subject  = data.get("subject", "")
-    sender   = data.get("from", "")
-    snippet  = data.get("snippet", "")
-    local    = data.get("local_result", {})
+    data    = request.json or {}
+    subject = data.get("subject", "")
+    sender  = data.get("from", "")
+    snippet = data.get("snippet", "")
+    local   = data.get("local_result", {})
 
     try:
         import openai
@@ -333,7 +343,7 @@ Explain in 2-3 plain English sentences what this email is and if the user should
 
 @app.route("/upgrade", methods=["POST"])
 def upgrade():
-    """Stub — wire to Stripe later."""
+    """Stub — wire to Stripe/Lemon Squeezy when ready."""
     email = _current_user()
     if not email:
         return jsonify({"error": "Not authenticated"}), 401
