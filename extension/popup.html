@@ -1,16 +1,110 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title> Classified Emails</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <title>InboxAI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <h2> Classified Emails</h2>
-  <div id="emails">Loading...</div>
-  <button id="refresh"> Refresh</button>
-  <button id="login" style="display:none;"> Login</button>
-  <button id="logout" style="display:none;"> Logout</button>
-  <a href="settings.html" target="_blank"> Settings</a>
-  <script src="popup.js"></script>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">
+    <span class="logo-mark">✦</span>
+    <span class="logo-text">InboxAI</span>
+  </div>
+  <div class="header-right">
+    <span id="userBadge" class="user-badge hidden"></span>
+    <button id="btnSettings" class="icon-btn" title="Settings">⚙</button>
+  </div>
+</header>
+
+<!-- LOGIN VIEW -->
+<div id="viewLogin" class="view">
+  <div class="login-hero">
+    <div class="hero-icon">✦</div>
+    <h1>Clean inbox,<br/>clear mind.</h1>
+    <p class="hero-sub">AI-powered Gmail organizer that labels, sorts, and removes clutter automatically.</p>
+    <button id="btnLogin" class="btn btn-primary btn-lg">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Continue with Google
+    </button>
+    <p class="login-note">We never store your emails. Processing is real-time only.</p>
+  </div>
+</div>
+
+<!-- DASHBOARD VIEW -->
+<div id="viewDashboard" class="view hidden">
+
+  <!-- Stats bar -->
+  <div id="statsBar" class="stats-bar hidden">
+    <div class="stat-pill">
+      <span class="stat-num" id="statTotal">—</span>
+      <span class="stat-label">scanned</span>
+    </div>
+    <div class="stat-pill accent-orange">
+      <span class="stat-num" id="statClutter">—</span>
+      <span class="stat-label">clutter</span>
+    </div>
+    <div class="stat-pill accent-red">
+      <span class="stat-num" id="statPhishing">—</span>
+      <span class="stat-label">phishing</span>
+    </div>
+    <div class="stat-pill accent-green">
+      <span class="stat-num" id="statClean">—</span>
+      <span class="stat-label">archived</span>
+    </div>
+  </div>
+
+  <!-- Usage bar (free tier) -->
+  <div id="usageBar" class="usage-bar hidden">
+    <div class="usage-label">
+      <span id="usageText">5 scans remaining today</span>
+      <a href="#" id="upgradeLink" class="upgrade-link">Upgrade ↗</a>
+    </div>
+    <div class="usage-track">
+      <div id="usageFill" class="usage-fill"></div>
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="actions">
+    <button id="btnScan" class="btn btn-primary">
+      <span class="btn-icon">⚡</span> Scan Inbox
+    </button>
+    <button id="btnCleanup" class="btn btn-danger hidden">
+      <span class="btn-icon">🧹</span>
+      <span id="btnCleanupLabel">Clean selected</span>
+    </button>
+    <button id="btnLogout" class="btn btn-ghost">Sign out</button>
+  </div>
+
+  <!-- Email list -->
+  <div id="emailList" class="email-list">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">📭</div>
+      <p>Hit <strong>Scan Inbox</strong> to analyse your emails.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loadingOverlay" class="loading-overlay hidden">
+  <div class="spinner"></div>
+  <p id="loadingMsg">Scanning your inbox…</p>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="popup.js"></script>
 </body>
 </html>
