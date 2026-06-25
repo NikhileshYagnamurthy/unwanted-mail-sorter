@@ -1,4 +1,4 @@
-// popup.js — InboxAI Chrome Extension (Fixed Version)
+// popup.js — InboxAI Chrome Extension
 "use strict";
 
 const BACKEND = "https://unwanted-mail-sorter.onrender.com";
@@ -26,6 +26,7 @@ const upgradeLink = $("upgradeLink");
 // ── State ─────────────────────────────────────────────────────────────────────
 let selectedIds = new Set();
 let toastTimer = null;
+let isChecking = false;
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 function showToast(msg, type = "", duration = 3000) {
@@ -63,6 +64,9 @@ async function api(path, opts = {}) {
 
 // ── Check Auth ────────────────────────────────────────────────────────────────
 async function checkAuth() {
+    if (isChecking) return;
+    isChecking = true;
+    
     try {
         const data = await api("/whoami");
         console.log("checkAuth response:", data);
@@ -82,6 +86,8 @@ async function checkAuth() {
         showView(viewLogin);
         showToast("Could not connect to backend", "error");
         return false;
+    } finally {
+        isChecking = false;
     }
 }
 
@@ -93,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Login ─────────────────────────────────────────────────────────────────────
 btnLogin.addEventListener("click", () => {
     chrome.tabs.create({ url: `${BACKEND}/login` });
-    showToast("Login window opened. Please complete the login.", "", 5000);
+    showToast("Login window opened. Complete login and come back.", "", 5000);
 });
 
 // ── Logout ────────────────────────────────────────────────────────────────────
@@ -133,7 +139,6 @@ function updateUsageBar(data) {
 if (upgradeLink) {
     upgradeLink.addEventListener("click", (e) => {
         e.preventDefault();
-        // Show upgrade info
         showToast("Upgrade coming soon!", "info", 3000);
     });
 }
@@ -170,6 +175,7 @@ btnScan.addEventListener("click", async () => {
         showToast(`✦ Scanned ${count} email${count !== 1 ? "s" : ""}`, "success");
 
     } catch (e) {
+        console.error("Scan error:", e);
         showToast("Connection failed. Is the backend awake?", "error");
     } finally {
         hideLoading();
@@ -247,10 +253,7 @@ function renderEmails(emails) {
             </div>
         `;
 
-        // Click = select/deselect
         card.addEventListener("click", () => toggleSelect(card, email.id));
-
-        // Double-click = expand reasons
         card.addEventListener("dblclick", e => {
             e.stopPropagation();
             card.classList.toggle("expanded");
@@ -299,7 +302,6 @@ btnCleanup.addEventListener("click", async () => {
             showToast(data.error, "error", 5000);
         } else {
             showToast(`✓ Archived ${data.cleaned} emails`, "success");
-            // Remove archived cards from UI
             selectedIds.forEach(id => {
                 const card = document.querySelector(`.email-card[data-id="${id}"]`);
                 if (card) card.remove();
