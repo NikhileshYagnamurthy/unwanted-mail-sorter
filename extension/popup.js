@@ -1,99 +1,487 @@
-const BACKEND = "https://unwanted-mail-sorter.onrender.com";
+/* InboxAI Popup Styles */
 
-// Check if user is logged in
-async function checkAuth() {
-  try {
-    const res = await fetch(`${BACKEND}/whoami`);
-    const data = await res.json();
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    if (!data.email) {
-      document.getElementById("emails").innerHTML = " No user logged in.";
-      document.getElementById("login").style.display = "block";
-      document.getElementById("logout").style.display = "none";
-      return null;
-    }
-
-    document.getElementById("login").style.display = "none";
-    document.getElementById("logout").style.display = "block";
-    return data.email;
-  } catch (err) {
-    console.error("checkAuth failed:", err);
-    document.getElementById("emails").innerHTML = "⚠️ Could not connect to backend.";
-    return null;
-  }
+:root {
+  --bg:        #0f0f13;
+  --surface:   #18181f;
+  --surface2:  #22222c;
+  --border:    #2e2e3a;
+  --text:      #f0f0f5;
+  --text-2:    #9090a8;
+  --text-3:    #5a5a72;
+  --accent:    #7c6aff;
+  --accent-2:  #a08bff;
+  --green:     #34d399;
+  --orange:    #fb923c;
+  --red:       #f87171;
+  --yellow:    #fbbf24;
+  --radius:    10px;
+  --radius-sm: 6px;
+  font-family: 'DM Sans', system-ui, sans-serif;
 }
 
-// Fetch emails for logged-in user
-async function fetchEmails(user) {
-  const emailsDiv = document.getElementById("emails");
-  emailsDiv.innerHTML = " Fetching emails...";
-
-  try {
-    const res = await fetch(`${BACKEND}/fetch-emails/${user}`);
-    const data = await res.json();
-
-    let emails = [];
-    if (Array.isArray(data)) {
-      emails = data;
-    } else if (Array.isArray(data.emails)) {
-      emails = data.emails;
-    } else {
-      emailsDiv.innerHTML = "⚠️ Unexpected response from backend.";
-      return;
-    }
-
-    emailsDiv.innerHTML = "";
-    emails.forEach((email) => {
-      const card = document.createElement("div");
-      card.className = "email-card";
-      card.innerHTML = `
-        <p><strong>${email.subject}</strong></p>
-        <p>From: ${email.from}</p>
-        <p>Label: ${email.label}</p>
-        <p>Confidence: ${email.confidence.toFixed(2)}%</p>
-        <hr>
-      `;
-      emailsDiv.appendChild(card);
-    });
-
-    if (emails.length === 0) {
-      emailsDiv.innerHTML = " No emails found.";
-    }
-  } catch (err) {
-    console.error("fetchEmails failed:", err);
-    emailsDiv.innerHTML = "⚠️ Could not connect to backend.";
-  }
+body {
+  width: 360px;
+  min-height: 480px;
+  max-height: 600px;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
-// Button → login
-document.getElementById("login").addEventListener("click", () => {
-  chrome.tabs.create({ url: `${BACKEND}/login` });
-});
+/* ── HEADER ─────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
 
-// Button → refresh
-document.getElementById("refresh").addEventListener("click", async () => {
-  const user = await checkAuth();
-  if (user) fetchEmails(user);
-});
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
 
-// Button → logout
-document.getElementById("logout").addEventListener("click", async () => {
-  try {
-    const res = await fetch(`${BACKEND}/logout`, { method: "POST" });
-    const data = await res.json();
-    console.log("Logout:", data);
+.logo-mark {
+  font-size: 16px;
+  color: var(--accent);
+  animation: pulse 3s ease infinite;
+}
 
-    document.getElementById("emails").innerHTML = "🛑 Logged out.";
-    document.getElementById("login").style.display = "block";
-    document.getElementById("logout").style.display = "none";
-  } catch (err) {
-    console.error("Logout failed:", err);
-    document.getElementById("emails").innerHTML = "⚠️ Logout failed.";
-  }
-});
+.logo-text {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
 
-// Run on popup open
-(async () => {
-  const user = await checkAuth();
-  if (user) fetchEmails(user);
-})();
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-badge {
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  border-radius: 20px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.icon-btn:hover { color: var(--text); background: var(--surface2); }
+
+/* ── VIEWS ───────────────────────────────────────────────────────── */
+.view { padding: 0; }
+.hidden { display: none !important; }
+
+/* ── LOGIN ───────────────────────────────────────────────────────── */
+.login-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 24px 28px;
+  gap: 12px;
+}
+
+.hero-icon {
+  font-size: 36px;
+  color: var(--accent);
+  animation: pulse 3s ease infinite;
+}
+
+.login-hero h1 {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.hero-sub {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  max-width: 260px;
+}
+
+.login-note {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+/* ── STATS BAR ───────────────────────────────────────────────────── */
+.stats-bar {
+  display: flex;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-pill {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 4px;
+}
+
+.stat-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--accent-2);
+}
+
+.stat-pill.accent-orange .stat-num { color: var(--orange); }
+.stat-pill.accent-red .stat-num    { color: var(--red); }
+.stat-pill.accent-green .stat-num  { color: var(--green); }
+
+.stat-label {
+  font-size: 9px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── USAGE BAR ───────────────────────────────────────────────────── */
+.usage-bar {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.upgrade-link {
+  font-size: 11px;
+  color: var(--accent-2);
+  text-decoration: none;
+  font-weight: 500;
+}
+.upgrade-link:hover { text-decoration: underline; }
+
+.usage-track {
+  height: 3px;
+  background: var(--surface2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.usage-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+/* ── ACTIONS ─────────────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  align-items: center;
+}
+
+/* ── BUTTONS ─────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 8px 14px;
+  transition: opacity 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  flex: 1;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-2); }
+
+.btn-danger {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+.btn-danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.25); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.btn-ghost:hover { color: var(--text-2); border-color: var(--text-3); }
+
+.btn-lg {
+  padding: 12px 24px;
+  font-size: 14px;
+  width: 100%;
+  justify-content: center;
+  gap: 10px;
+}
+
+.btn-icon { font-size: 14px; }
+
+/* ── EMAIL LIST ──────────────────────────────────────────────────── */
+.email-list {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 0;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.empty-icon { font-size: 28px; }
+.empty-state p { font-size: 13px; line-height: 1.5; }
+
+/* ── EMAIL CARD ──────────────────────────────────────────────────── */
+.email-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.email-card:hover { border-color: var(--accent); background: var(--surface2); }
+
+.email-card.selected {
+  border-color: var(--accent);
+  background: rgba(124, 106, 255, 0.08);
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.card-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border);
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all 0.15s;
+}
+
+.email-card.selected .card-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.email-card.selected .card-check::after { content: "✓"; }
+
+.card-info { flex: 1; min-width: 0; }
+
+.card-subject {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.card-from {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 20px;
+}
+
+/* Badge colors */
+.badge-promotion  { background: rgba(251,146,60,.15);  color: var(--orange); }
+.badge-newsletter { background: rgba(124,106,255,.15); color: var(--accent-2); }
+.badge-phishing   { background: rgba(248,113,113,.2);  color: var(--red); }
+.badge-security   { background: rgba(251,191,36,.15);  color: var(--yellow); }
+.badge-finance    { background: rgba(52,211,153,.15);  color: var(--green); }
+.badge-recruiter  { background: rgba(96,165,250,.15);  color: #60a5fa; }
+.badge-social     { background: rgba(167,139,250,.15); color: #a78bfa; }
+.badge-important  { background: rgba(52,211,153,.2);   color: var(--green); }
+.badge-default    { background: var(--surface2);       color: var(--text-2); }
+
+/* Expandable reasons */
+.card-reasons {
+  margin-top: 7px;
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.email-card.expanded .card-reasons { display: flex; }
+
+.reason-tag {
+  font-size: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  padding: 2px 7px;
+  border-radius: 20px;
+}
+
+.reason-tag.warn {
+  border-color: rgba(248,113,113,.4);
+  color: var(--red);
+}
+
+/* Confidence bar */
+.confidence-bar {
+  margin-top: 6px;
+  display: none;
+  align-items: center;
+  gap: 7px;
+}
+
+.email-card.expanded .confidence-bar { display: flex; }
+
+.conf-track {
+  flex: 1;
+  height: 2px;
+  background: var(--surface2);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.conf-fill {
+  height: 100%;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.conf-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+/* ── LOADING OVERLAY ─────────────────────────────────────────────── */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,15,19,.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 100;
+  backdrop-filter: blur(4px);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-overlay p {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* ── TOAST ───────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12.5px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  z-index: 200;
+  white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4);
+}
+
+.toast.error   { border-color: rgba(248,113,113,.5); color: var(--red); }
+.toast.success { border-color: rgba(52,211,153,.5);  color: var(--green); }
