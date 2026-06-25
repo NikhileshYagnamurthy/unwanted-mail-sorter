@@ -1,18 +1,46 @@
-// background.js — InboxAI service worker
+// background.js — InboxAI Service Worker
 
-const BACKEND = "https://unwanted-mail-sorter.onrender.com";
+console.log("InboxAI service worker started.");
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({ threshold: 50, autoScan: false });
+// Handle messages from popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // API Request - proxy through service worker
+    if (message.action === "apiRequest") {
+        console.log("Proxying API request:", message.url);
+        
+        fetch(message.url, {
+            method: message.method || "GET",
+            headers: message.headers || { "Content-Type": "application/json" },
+            credentials: "include",
+            body: message.body || null,
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("API response received:", data);
+            sendResponse({ success: true, data: data });
+        })
+        .catch(error => {
+            console.error("API request failed:", error);
+            sendResponse({ success: false, error: error.message });
+        });
+        return true; // Keep channel open for async response
+    }
+    
+    // Open login tab
+    if (message.action === "openLogin") {
+        chrome.tabs.create({
+            url: "https://unwanted-mail-sorter.onrender.com/login"
+        });
+        return true;
+    }
 });
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === "openLogin") {
-    chrome.tabs.create({ url: `${BACKEND}/login` });
-    sendResponse({ ok: true });
-  }
-  if (msg.action === "getBackendUrl") {
-    sendResponse({ url: BACKEND });
-  }
-  return true;
+// Log when extension is installed
+chrome.runtime.onInstalled.addListener(() => {
+    console.log("InboxAI extension installed successfully.");
 });
