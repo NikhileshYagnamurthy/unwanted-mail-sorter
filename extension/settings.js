@@ -100,8 +100,9 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
   btn.textContent = "Processing...";
   
   try {
-    // 1. Get Razorpay Key
+    console.log("Step 1: Getting Razorpay key...");
     const keyData = await api("/razorpay-key");
+    console.log("Key data:", keyData);
     
     if (keyData.error) {
       alert("Payment setup not configured. Please try again later.");
@@ -110,11 +111,12 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
       return;
     }
     
-    // 2. Create order using the API function (sends credentials via background)
+    console.log("Step 2: Creating order...");
     const order = await api("/create-order", {
       method: "POST",
       body: JSON.stringify({ currency: selectedCurrency })
     });
+    console.log("Order data:", order);
     
     if (order.error) {
       alert("Failed to create order: " + order.error);
@@ -123,61 +125,30 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
       return;
     }
     
-    // 3. Get user email
+    console.log("Step 3: Getting user email...");
     const whoami = await api("/whoami");
     const userEmail = whoami.email || "";
+    console.log("User email:", userEmail);
     
-    // 4. Open Razorpay Checkout
-    const options = {
-      key: keyData.key_id,
-      amount: order.amount,
-      currency: order.currency || "INR",
-      name: "InboxAI Premium",
-      description: "Unlimited scans & smart email organization",
-      order_id: order.order_id,
-      prefill: {
-        email: userEmail
-      },
-      theme: {
-        color: "#7c6aff"
-      },
-      handler: function(response) {
-        // Verify payment on backend
-        api("/payment-callback", {
-          method: "POST",
-          body: JSON.stringify({
-            razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_order_id: response.razorpay_order_id,
-            razorpay_signature: response.razorpay_signature,
-            notes: { email: userEmail }
-          })
-        })
-        .then(data => {
-          if (data.status === "success") {
-            document.getElementById("premiumStatus").style.display = "block";
-            document.getElementById("premiumStatus").textContent = "✦ Premium activated!";
-            btn.disabled = true;
-            btn.textContent = "✦ Premium Active";
-            alert("🎉 Premium activated successfully!");
-          } else {
-            alert("Payment verification failed. Please contact support.");
-          }
-        })
-        .catch(err => {
-          console.error("Verification error:", err);
-          alert("Payment verification failed. Please contact support.");
-        });
-      },
-      modal: {
-        ondismiss: function() {
-          btn.disabled = false;
-          btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
-        }
-      }
-    };
+    // Check if Razorpay is loaded
+    if (typeof Razorpay === "undefined") {
+      console.error("Razorpay is not defined. Loading script dynamically...");
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = function() {
+        console.log("Razorpay script loaded dynamically");
+        openRazorpay(keyData.key_id, order, userEmail, btn);
+      };
+      script.onerror = function() {
+        alert("Payment system failed to load. Please check your internet connection and try again.");
+        btn.disabled = false;
+        btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
+      };
+      document.head.appendChild(script);
+      return;
+    }
     
-    const rzp = new Razorpay(options);
-    rzp.open();
+    openRazorpay(keyData.key_id, order, userEmail, btn);
     
   } catch (error) {
     console.error("Payment error:", error);
@@ -186,3 +157,66 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
     btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
   }
 });
+
+// ── Open Razorpay Checkout ────────────────────────────────────────────────────
+function openRazorpay(keyId, order, userEmail, btn) {
+  console.log("Opening Razorpay with key:", keyId);
+  
+  const options = {
+    key: keyId,
+    amount: order.amount,
+    currency: order.currency || "INR",
+    name: "InboxAI Premium",
+    description: "Unlimited scans & smart email organization",
+    order_id: order.order_id,
+    prefill: {
+      email: userEmail
+    },
+    theme: {
+      color: "#7c6aff"
+    },
+    handler: function(response) {
+      console.log("Payment response:", response);
+      api("/payment-callback", {
+        method: "POST",
+        body: JSON.stringify({
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_signature: response.razorpay_signature,
+          notes: { email: userEmail }
+        })
+      })
+      .then(data => {
+        if (data.status === "success") {
+          document.getElementById("premiumStatus").style.display = "block";
+          document.getElementById("premiumStatus").textContent = "✦ Premium activated!";
+          btn.disabled = true;
+          btn.textContent = "✦ Premium Active";
+          alert("🎉 Premium activated successfully!");
+        } else {
+          alert("Payment verification failed. Please contact support.");
+        }
+      })
+      .catch(err => {
+        console.error("Verification error:", err);
+        alert("Payment verification failed. Please contact support.");
+      });
+    },
+    modal: {
+      ondismiss: function() {
+        btn.disabled = false;
+        btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
+      }
+    }
+  };
+  
+  try {
+    const rzp = new Razorpay(options);
+    rzp.open();
+  } catch (error) {
+    console.error("Razorpay open error:", error);
+    alert("Payment system failed to open. Please try again.");
+    btn.disabled = false;
+    btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
+  }
+}
