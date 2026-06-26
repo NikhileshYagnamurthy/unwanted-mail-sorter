@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "InboxAI — Smart Gmail Organizer",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "AI-powered inbox cleanup. Automatically labels promotions, newsletters, phishing, and more.",
   "permissions": [
     "storage",
