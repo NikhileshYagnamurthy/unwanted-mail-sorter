@@ -42,25 +42,37 @@ document.querySelectorAll(".currency-btn").forEach(btn => {
   });
 });
 
-// ── Check premium status ──────────────────────────────────────────────────────
-async function checkPremiumStatus() {
+// ── Check premium status and login ────────────────────────────────────────────
+async function checkStatus() {
   try {
     const res = await fetch(`${BACKEND}/whoami`, {
       credentials: "include",
       headers: { "Content-Type": "application/json" }
     });
     const data = await res.json();
-    if (data && data.is_premium) {
+    
+    if (!data || !data.email) {
+      // Not logged in - show login button
+      document.getElementById("premiumStatus").style.display = "block";
+      document.getElementById("premiumStatus").textContent = "⚠️ Please login first";
+      document.getElementById("premiumStatus").style.color = "#f87171";
+      document.getElementById("btnUpgrade").disabled = true;
+      document.getElementById("btnUpgrade").textContent = "Login Required";
+      return;
+    }
+    
+    if (data.is_premium) {
       document.getElementById("premiumStatus").style.display = "block";
       document.getElementById("premiumStatus").textContent = "✦ You are already a premium member!";
+      document.getElementById("premiumStatus").style.color = "#34d399";
       document.getElementById("btnUpgrade").disabled = true;
       document.getElementById("btnUpgrade").textContent = "✦ Premium Active";
     }
   } catch (e) {
-    console.error("Failed to check premium status:", e);
+    console.error("Failed to check status:", e);
   }
 }
-checkPremiumStatus();
+checkStatus();
 
 // ── API call via background service worker ────────────────────────────────────
 async function api(path, opts = {}) {
@@ -100,6 +112,15 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
   btn.textContent = "Processing...";
   
   try {
+    // First check if user is logged in
+    const whoami = await api("/whoami");
+    if (!whoami || !whoami.email) {
+      alert("Please login to the extension first before upgrading.");
+      btn.disabled = false;
+      btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
+      return;
+    }
+    
     console.log("Step 1: Getting Razorpay key...");
     const keyData = await api("/razorpay-key");
     console.log("Key data:", keyData);
@@ -125,8 +146,6 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
       return;
     }
     
-    console.log("Step 3: Getting user email...");
-    const whoami = await api("/whoami");
     const userEmail = whoami.email || "";
     console.log("User email:", userEmail);
     
@@ -190,6 +209,7 @@ function openRazorpay(keyId, order, userEmail, btn) {
         if (data.status === "success") {
           document.getElementById("premiumStatus").style.display = "block";
           document.getElementById("premiumStatus").textContent = "✦ Premium activated!";
+          document.getElementById("premiumStatus").style.color = "#34d399";
           btn.disabled = true;
           btn.textContent = "✦ Premium Active";
           alert("🎉 Premium activated successfully!");
