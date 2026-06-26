@@ -3,6 +3,27 @@
 
 const BACKEND = "https://unwanted-mail-sorter.onrender.com";
 
+// ── Cache user in storage ──
+async function getCachedUser() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(["cachedEmail"], (result) => {
+            resolve(result.cachedEmail || null);
+        });
+    });
+}
+
+async function setCachedUser(email) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set({ cachedEmail: email }, resolve);
+    });
+}
+
+async function clearCachedUser() {
+    return new Promise((resolve) => {
+        chrome.storage.local.remove("cachedEmail", resolve);
+    });
+}
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const viewLogin = $("viewLogin");
@@ -96,17 +117,45 @@ async function checkAuth() {
         console.log("checkAuth response:", data);
         
         if (data && data.email) {
+            // ✅ Cache the email
+            await setCachedUser(data.email);
+            
             userBadge.textContent = data.email;
             userBadge.classList.remove("hidden");
             showView(viewDash);
             updateUsageBar(data);
             return true;
         } else {
+            // ❌ Try cached user as fallback
+            const cached = await getCachedUser();
+            if (cached) {
+                userBadge.textContent = cached;
+                userBadge.classList.remove("hidden");
+                showView(viewDash);
+                // Try to re-authenticate silently
+                try {
+                    const refreshData = await api("/whoami");
+                    if (refreshData && refreshData.email) {
+                        updateUsageBar(refreshData);
+                    }
+                } catch (e) {
+                    // Still show cached user
+                }
+                return true;
+            }
             showView(viewLogin);
             return false;
         }
     } catch (e) {
         console.error("checkAuth error:", e);
+        // Try cached user as fallback
+        const cached = await getCachedUser();
+        if (cached) {
+            userBadge.textContent = cached;
+            userBadge.classList.remove("hidden");
+            showView(viewDash);
+            return true;
+        }
         showView(viewLogin);
         showToast("Could not connect to backend", "error");
         return false;
@@ -130,6 +179,7 @@ btnLogin.addEventListener("click", () => {
 // ── Logout ────────────────────────────────────────────────────────────────────
 btnLogout.addEventListener("click", async () => {
     await api("/logout", { method: "POST" }).catch(() => {});
+    await clearCachedUser();  // ✅ Clear cached user
     userBadge.classList.add("hidden");
     selectedIds.clear();
     emailList.innerHTML = "";
