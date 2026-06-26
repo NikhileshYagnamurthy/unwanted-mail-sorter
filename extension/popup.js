@@ -117,30 +117,24 @@ async function checkAuth() {
         console.log("checkAuth response:", data);
         
         if (data && data.email) {
-            // ✅ Cache the email
             await setCachedUser(data.email);
-            
             userBadge.textContent = data.email;
             userBadge.classList.remove("hidden");
             showView(viewDash);
             updateUsageBar(data);
             return true;
         } else {
-            // ❌ Try cached user as fallback
             const cached = await getCachedUser();
             if (cached) {
                 userBadge.textContent = cached;
                 userBadge.classList.remove("hidden");
                 showView(viewDash);
-                // Try to re-authenticate silently
                 try {
                     const refreshData = await api("/whoami");
                     if (refreshData && refreshData.email) {
                         updateUsageBar(refreshData);
                     }
-                } catch (e) {
-                    // Still show cached user
-                }
+                } catch (e) {}
                 return true;
             }
             showView(viewLogin);
@@ -148,7 +142,6 @@ async function checkAuth() {
         }
     } catch (e) {
         console.error("checkAuth error:", e);
-        // Try cached user as fallback
         const cached = await getCachedUser();
         if (cached) {
             userBadge.textContent = cached;
@@ -179,7 +172,7 @@ btnLogin.addEventListener("click", () => {
 // ── Logout ────────────────────────────────────────────────────────────────────
 btnLogout.addEventListener("click", async () => {
     await api("/logout", { method: "POST" }).catch(() => {});
-    await clearCachedUser();  // ✅ Clear cached user
+    await clearCachedUser();
     userBadge.classList.add("hidden");
     selectedIds.clear();
     emailList.innerHTML = "";
@@ -196,6 +189,14 @@ btnSettings.addEventListener("click", () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
 });
 
+// ── Upgrade Link (opens settings page) ──────────────────────────────────────
+if (upgradeLink) {
+    upgradeLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
+    });
+}
+
 // ── Usage bar ─────────────────────────────────────────────────────────────────
 function updateUsageBar(data) {
     if (data.is_premium) {
@@ -208,14 +209,6 @@ function updateUsageBar(data) {
     $("usageText").textContent = `${remaining} free scan${remaining !== 1 ? "s" : ""} remaining today`;
     $("usageFill").style.width = `${Math.min(100, (used / FREE) * 100)}%`;
     usageBar.classList.remove("hidden");
-}
-
-// ── Upgrade Link ──────────────────────────────────────────────────────────────
-if (upgradeLink) {
-    upgradeLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        showToast("Upgrade coming soon!", "info", 3000);
-    });
 }
 
 // ── Scan ──────────────────────────────────────────────────────────────────────
@@ -242,7 +235,6 @@ btnScan.addEventListener("click", async () => {
         renderEmails(emails);
         renderStats(data.analytics);
 
-        // Refresh usage bar
         const whoami = await api("/whoami").catch(() => null);
         if (whoami) updateUsageBar(whoami);
 
