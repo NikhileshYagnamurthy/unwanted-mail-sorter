@@ -38,7 +38,7 @@ document.querySelectorAll(".currency-btn").forEach(btn => {
     btn.classList.add("active");
     selectedCurrency = btn.dataset.currency;
     document.getElementById("btnUpgrade").textContent = 
-      selectedCurrency === "INR" ? "Upgrade — ₹99/mo" : "Upgrade — $1.19/mo";
+      selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
   });
 });
 
@@ -52,6 +52,7 @@ async function checkPremiumStatus() {
     const data = await res.json();
     if (data && data.is_premium) {
       document.getElementById("premiumStatus").style.display = "block";
+      document.getElementById("premiumStatus").textContent = "✦ You are already a premium member!";
       document.getElementById("btnUpgrade").disabled = true;
       document.getElementById("btnUpgrade").textContent = "✦ Premium Active";
     }
@@ -61,6 +62,37 @@ async function checkPremiumStatus() {
 }
 checkPremiumStatus();
 
+// ── API call via background service worker ────────────────────────────────────
+async function api(path, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const url = `${BACKEND}${path}`;
+    const method = opts.method || "GET";
+    const body = opts.body || null;
+    const headers = opts.headers || { "Content-Type": "application/json" };
+    
+    chrome.runtime.sendMessage({
+      action: "apiRequest",
+      url: url,
+      method: method,
+      headers: headers,
+      body: body
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("chrome.runtime.lastError:", chrome.runtime.lastError);
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      if (response && response.success) {
+        console.log("API response:", response.data);
+        resolve(response.data);
+      } else {
+        console.error("API Error:", response?.error);
+        reject(new Error(response?.error || "API request failed"));
+      }
+    });
+  });
+}
+
 // ── Upgrade button ────────────────────────────────────────────────────────────
 document.getElementById("btnUpgrade").addEventListener("click", async () => {
   const btn = document.getElementById("btnUpgrade");
@@ -69,46 +101,37 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
   
   try {
     // 1. Get Razorpay Key
-    const keyRes = await fetch(`${BACKEND}/razorpay-key`, {
-      credentials: "include"
-    });
-    const keyData = await keyRes.json();
+    const keyData = await api("/razorpay-key");
     
     if (keyData.error) {
       alert("Payment setup not configured. Please try again later.");
       btn.disabled = false;
-      btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹99/mo" : "Upgrade — $1.19/mo";
+      btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
       return;
     }
     
-    // 2. Create order
-    const orderRes = await fetch(`${BACKEND}/create-order`, {
+    // 2. Create order using the API function (sends credentials via background)
+    const order = await api("/create-order", {
       method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ currency: selectedCurrency })
     });
-    const order = await orderRes.json();
     
     if (order.error) {
       alert("Failed to create order: " + order.error);
       btn.disabled = false;
-      btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹99/mo" : "Upgrade — $1.19/mo";
+      btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
       return;
     }
     
     // 3. Get user email
-    const whoamiRes = await fetch(`${BACKEND}/whoami`, {
-      credentials: "include"
-    });
-    const whoami = await whoamiRes.json();
+    const whoami = await api("/whoami");
     const userEmail = whoami.email || "";
     
     // 4. Open Razorpay Checkout
     const options = {
       key: keyData.key_id,
       amount: order.amount,
-      currency: order.currency,
+      currency: order.currency || "INR",
       name: "InboxAI Premium",
       description: "Unlimited scans & smart email organization",
       order_id: order.order_id,
@@ -120,9 +143,8 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
       },
       handler: function(response) {
         // Verify payment on backend
-        fetch(`${BACKEND}/payment-callback`, {
+        api("/payment-callback", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             razorpay_payment_id: response.razorpay_payment_id,
             razorpay_order_id: response.razorpay_order_id,
@@ -130,7 +152,6 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
             notes: { email: userEmail }
           })
         })
-        .then(r => r.json())
         .then(data => {
           if (data.status === "success") {
             document.getElementById("premiumStatus").style.display = "block";
@@ -150,7 +171,7 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
       modal: {
         ondismiss: function() {
           btn.disabled = false;
-          btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹99/mo" : "Upgrade — $1.19/mo";
+          btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
         }
       }
     };
@@ -162,6 +183,6 @@ document.getElementById("btnUpgrade").addEventListener("click", async () => {
     console.error("Payment error:", error);
     alert("Payment setup failed. Please try again.");
     btn.disabled = false;
-    btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹99/mo" : "Upgrade — $1.19/mo";
+    btn.textContent = selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
   }
 });
