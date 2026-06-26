@@ -381,12 +381,12 @@ def create_order():
     data = request.json or {}
     currency = data.get("currency", "INR")
     
-    # ₹99 = 9900 paise (INR)
-    # $1.19 = 119 cents (USD)
+    # ── TEST MODE: ₹10 for testing ──
+    # Change this back to 9900 (₹99) when ready for production
     if currency == "USD":
-        amount = 119
+        amount = 119  # $1.19
     else:
-        amount = 9900
+        amount = 1000  # ₹10 (1000 paise) - TEST MODE
     
     try:
         order_data = {
