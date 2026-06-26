@@ -16,9 +16,12 @@ from googleapiclient.discovery import build
 
 from scorer import score_email, batch_score, inbox_analytics
 
+# ── Razorpay ──────────────────────────────────────────────────────────────────
+import razorpay
+
 app = Flask(__name__)
 
-# ── CORS: Allow all origins (like your working version) ──
+# ── CORS: Allow all origins with credentials ──
 CORS(app, supports_credentials=True)
 
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
@@ -29,13 +32,21 @@ logging.basicConfig(level=logging.INFO)
 BACKEND_URL = "https://unwanted-mail-sorter.onrender.com"
 GOOGLE_CLIENT_SECRETS_FILE = "/tmp/credentials.json"
 
-# ── SCOPES: Only the 2 that worked before ──
+# ── SCOPES: Only the 2 that work ──
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.readonly",
 ]
 
 FREE_TIER_DAILY_SCANS = 5
+
+# ── Razorpay Config ──────────────────────────────────────────────────────────
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
+
+razorpay_client = razorpay.Client(
+    auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)
+) if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET else None
 
 # Write credentials.json from environment variable set on Render
 if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
@@ -353,6 +364,105 @@ def upgrade():
     USAGE_LOG.setdefault(email, {"date": str(date.today()), "scans": 0, "is_premium": False})
     USAGE_LOG[email]["is_premium"] = True
     return jsonify({"message": f"{email} upgraded to premium", "is_premium": True})
+
+
+# ── Razorpay Payment Routes ────────────────────────────────────────────────────
+
+@app.route("/create-order", methods=["POST"])
+def create_order():
+    """Create Razorpay order for premium subscription."""
+    if not razorpay_client:
+        return jsonify({"error": "Razorpay not configured"}), 500
+    
+    email = _current_user()
+    if not email:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    data = request.json or {}
+    currency = data.get("currency", "INR")
+    
+    # ₹99 = 9900 paise (INR)
+    # $1.19 = 119 cents (USD)
+    if currency == "USD":
+        amount = 119
+    else:
+        amount = 9900
+    
+    try:
+        order_data = {
+            "amount": amount,
+            "currency": currency,
+            "receipt": f"premium_{email}_{date.today()}",
+            "payment_capture": 1,
+            "notes": {"email": email}
+        }
+        
+        order = razorpay_client.order.create(order_data)
+        return jsonify({
+            "order_id": order["id"],
+            "amount": order["amount"],
+            "currency": order["currency"]
+        })
+    except Exception as e:
+        logging.error(f"Razorpay order creation failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/payment-callback", methods=["POST"])
+def payment_callback():
+    """Verify Razorpay payment and upgrade user."""
+    try:
+        data = request.json
+        logging.info(f"Payment callback received: {data}")
+        
+        # Verify signature
+        razorpay_client.utility.verify_payment_signature(data)
+        
+        # Get email from notes
+        email = data.get("notes", {}).get("email")
+        if not email:
+            # Try to get from prefill
+            email = data.get("prefill", {}).get("email")
+        
+        if email and email in USAGE_LOG:
+            USAGE_LOG[email]["is_premium"] = True
+            USAGE_LOG[email]["premium_since"] = str(date.today())
+            logging.info(f"✅ Premium activated for {email}")
+            return jsonify({
+                "status": "success",
+                "message": "Premium activated!",
+                "email": email
+            })
+        else:
+            # User might not be in USAGE_LOG yet (edge case)
+            if email:
+                USAGE_LOG[email] = {
+                    "date": str(date.today()),
+                    "scans": 0,
+                    "is_premium": True,
+                    "premium_since": str(date.today())
+                }
+                return jsonify({
+                    "status": "success",
+                    "message": "Premium activated!",
+                    "email": email
+                })
+            return jsonify({"error": "User not found"}), 404
+            
+    except razorpay.errors.SignatureVerificationError:
+        logging.error("Payment signature verification failed")
+        return jsonify({"error": "Invalid signature"}), 400
+    except Exception as e:
+        logging.error(f"Payment callback failed: {e}")
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/razorpay-key", methods=["GET"])
+def get_razorpay_key():
+    """Return Razorpay Key ID for frontend."""
+    if not RAZORPAY_KEY_ID:
+        return jsonify({"error": "Razorpay not configured"}), 500
+    return jsonify({"key_id": RAZORPAY_KEY_ID})
 
 
 if __name__ == "__main__":
