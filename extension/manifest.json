@@ -9,7 +9,8 @@
   ],
   "host_permissions": [
     "https://unwanted-mail-sorter.onrender.com/*",
-    "https://mail.google.com/*"
+    "https://mail.google.com/*",
+    "https://checkout.razorpay.com/*"
   ],
   "web_accessible_resources": [
     {
@@ -17,6 +18,9 @@
       "matches": ["<all_urls>"]
     }
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' https://checkout.razorpay.com; object-src 'self'"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
