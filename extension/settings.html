@@ -5,6 +5,7 @@
   <title>InboxAI — Settings</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     
@@ -76,7 +77,6 @@
     .setting-label { font-size: 13.5px; font-weight: 500; }
     .setting-desc { font-size: 11.5px; color: var(--text-3); margin-top: 2px; line-height: 1.4; }
     
-    /* Toggle switch */
     .toggle { position: relative; width: 38px; height: 22px; flex-shrink: 0; }
     .toggle input { opacity: 0; width: 0; height: 0; }
     .toggle-slider {
@@ -145,7 +145,6 @@
     
     #statusMsg { font-size: 12px; color: var(--green); }
     
-    /* Premium card */
     .premium-card {
       background: linear-gradient(135deg,rgba(124,106,255,.1),rgba(160,139,255,.04));
       border: 1px solid rgba(124,106,255,.3);
@@ -230,7 +229,6 @@
     <span class="logo-text">InboxAI Settings</span>
   </div>
 
-  <!-- Classification -->
   <h2>Classification</h2>
   <div class="card">
     <div class="setting-row">
@@ -265,7 +263,6 @@
     </div>
   </div>
 
-  <!-- Scan -->
   <h2>Scan</h2>
   <div class="card">
     <div class="setting-row">
@@ -277,7 +274,6 @@
     </div>
   </div>
 
-  <!-- Premium -->
   <h2>Premium</h2>
   <div class="premium-card">
     <div class="premium-header">
@@ -285,7 +281,6 @@
       <span class="premium-badge">PRO</span>
     </div>
     
-    <!-- Currency Selector -->
     <div class="currency-selector">
       <button class="currency-btn active" data-currency="INR" id="btnINR">
         <span class="currency-label">🇮🇳 India</span>
@@ -312,15 +307,12 @@
     <p id="premiumStatus">✦ You are already a premium member!</p>
   </div>
 
-  <!-- Save -->
   <div class="btn-row">
     <button class="btn btn-primary" id="btnSave">Save Settings</button>
     <span id="statusMsg"></span>
   </div>
 
 </div>
-
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script src="settings.js"></script>
 </body>
 </html>
