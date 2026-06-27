@@ -8,6 +8,8 @@ import json
 import logging
 from datetime import date
 import requests
+import socket
+import dns.resolver
 
 from flask import Flask, request, jsonify, redirect, session
 from flask_cors import CORS
@@ -20,7 +22,7 @@ import razorpay
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
@@ -29,6 +31,14 @@ CORS(app, supports_credentials=True, origins=[
     "http://localhost:*",
     "https://unwanted-mail-sorter.onrender.com"
 ])
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 logging.basicConfig(level=logging.INFO)
 
@@ -43,9 +53,33 @@ SCOPES = [
 
 FREE_TIER_DAILY_SCANS = 5
 
-# ── Supabase REST API Config ─────────────────────────────────────────────────
+# ── Supabase Config with DNS Resolver ────────────────────────────────────────
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+# ── Force DNS Resolution ──────────────────────────────────────────────────────
+def resolve_supabase():
+    """Force DNS resolution for Supabase domain."""
+    try:
+        resolver = dns.resolver.Resolver()
+        resolver.nameservers = ['8.8.8.8', '1.1.1.1']  # Google DNS
+        answers = resolver.resolve('zdjyuqbgpeatbfkfo.supabase.co', 'A')
+        for rdata in answers:
+            ip = str(rdata)
+            logging.info(f"✅ Supabase IP resolved: {ip}")
+            return ip
+    except Exception as e:
+        logging.error(f"DNS resolution failed: {e}")
+        return None
+
+# Resolve IP and use it
+SUPABASE_IP = resolve_supabase()
+if SUPABASE_IP:
+    # Use IP directly with SSL verification disabled
+    SUPABASE_URL = f"https://{SUPABASE_IP}"
+    logging.info(f"Using Supabase IP: {SUPABASE_URL}")
+else:
+    logging.warning("⚠️ DNS resolution failed, using domain (may fail)")
 
 # ── Razorpay Config ──────────────────────────────────────────────────────────
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
@@ -68,7 +102,7 @@ AI_LABELS = [
 ]
 
 
-# ── Supabase REST API Functions ──────────────────────────────────────────────
+# ── Supabase REST API Functions with DNS Fix ──────────────────────────────────
 def get_supabase_headers():
     return {
         "apikey": SUPABASE_KEY,
@@ -77,13 +111,14 @@ def get_supabase_headers():
     }
 
 def get_user(email: str):
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not SUPABASE_KEY or not SUPABASE_URL:
         return None
     try:
         headers = get_supabase_headers()
         response = requests.get(
             f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}",
-            headers=headers
+            headers=headers,
+            verify=False  # Disable SSL verification for IP
         )
         if response.status_code == 200:
             data = response.json()
@@ -94,7 +129,7 @@ def get_user(email: str):
         return None
 
 def upsert_user(email: str, data: dict):
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not SUPABASE_KEY or not SUPABASE_URL:
         return None
     try:
         headers = get_supabase_headers()
@@ -102,7 +137,8 @@ def upsert_user(email: str, data: dict):
         response = requests.post(
             f"{SUPABASE_URL}/rest/v1/users",
             headers=headers,
-            json={"email": email, **data}
+            json={"email": email, **data},
+            verify=False
         )
         if response.status_code in [200, 201]:
             result = response.json()
@@ -113,14 +149,15 @@ def upsert_user(email: str, data: dict):
         return None
 
 def update_user(email: str, data: dict):
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not SUPABASE_KEY or not SUPABASE_URL:
         return None
     try:
         headers = get_supabase_headers()
         response = requests.patch(
             f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}",
             headers=headers,
-            json=data
+            json=data,
+            verify=False
         )
         if response.status_code == 200:
             result = response.json()
@@ -226,10 +263,7 @@ def oauth2callback():
         service = build("gmail", "v1", credentials=creds)
         email = service.users().getProfile(userId="me").execute()["emailAddress"]
         
-        # Store token in Supabase
         set_token(email, creds.to_json())
-        
-        # Store email in session
         session['user_email'] = email
         logging.info(f"Authenticated: {email}")
         
@@ -251,7 +285,6 @@ def oauth2callback():
 @app.route("/whoami")
 def whoami():
     email = session.get('user_email')
-    
     if not email:
         return jsonify({"email": None})
     
