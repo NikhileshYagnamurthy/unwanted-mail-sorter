@@ -63,7 +63,7 @@ def resolve_supabase():
     try:
         resolver = dns.resolver.Resolver()
         resolver.nameservers = ['8.8.8.8', '1.1.1.1']  # Google DNS
-        answers = resolver.resolve('zdjyuqbgpeatbfkfo.supabase.co', 'A')
+        answers = resolver.resolve('zdjyuqbgpeatbflrkfio.supabase.co', 'A')
         for rdata in answers:
             ip = str(rdata)
             logging.info(f"✅ Supabase IP resolved: {ip}")
