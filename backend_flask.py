@@ -7,6 +7,7 @@ import os
 import json
 import logging
 from datetime import date
+import requests
 
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
@@ -16,9 +17,6 @@ from googleapiclient.discovery import build
 
 from scorer import score_email, batch_score, inbox_analytics
 import razorpay
-
-# ── Supabase ──────────────────────────────────────────────────────────────────
-from supabase_py import create_client, Client
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
@@ -37,11 +35,9 @@ SCOPES = [
 
 FREE_TIER_DAILY_SCANS = 5
 
-# ── Supabase Client ───────────────────────────────────────────────────────────
+# ── Supabase REST API Config ─────────────────────────────────────────────────
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 # ── Razorpay Config ──────────────────────────────────────────────────────────
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
@@ -64,36 +60,67 @@ AI_LABELS = [
 ]
 
 
-# ── Database Functions ────────────────────────────────────────────────────────
+# ── Supabase REST API Functions ──────────────────────────────────────────────
+def get_supabase_headers():
+    """Get headers for Supabase REST API calls."""
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json"
+    }
+
 def get_user(email: str):
-    """Get user from Supabase."""
-    if not supabase:
+    """Get user from Supabase using REST API."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     try:
-        result = supabase.table("users").select("*").eq("email", email).execute()
-        return result.data[0] if result.data else None
+        headers = get_supabase_headers()
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}",
+            headers=headers
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data[0] if data else None
+        return None
     except Exception as e:
         logging.error(f"get_user error: {e}")
         return None
 
 def upsert_user(email: str, data: dict):
-    """Insert or update user in Supabase."""
-    if not supabase:
+    """Insert or update user in Supabase using REST API."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     try:
-        result = supabase.table("users").upsert({"email": email, **data}).execute()
-        return result.data[0] if result.data else None
+        headers = get_supabase_headers()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        response = requests.post(
+            f"{SUPABASE_URL}/rest/v1/users",
+            headers=headers,
+            json={"email": email, **data}
+        )
+        if response.status_code in [200, 201]:
+            return response.json()[0] if response.json() else None
+        return None
     except Exception as e:
         logging.error(f"upsert_user error: {e}")
         return None
 
 def update_user(email: str, data: dict):
-    """Update user in Supabase."""
-    if not supabase:
+    """Update user in Supabase using REST API."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     try:
-        result = supabase.table("users").update(data).eq("email", email).execute()
-        return result.data[0] if result.data else None
+        headers = get_supabase_headers()
+        response = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}",
+            headers=headers,
+            json=data
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data[0] if data else None
+        return None
     except Exception as e:
         logging.error(f"update_user error: {e}")
         return None
@@ -172,8 +199,6 @@ def _ensure_ai_labels(service):
 
 
 def _current_user():
-    # Get user from session - simplified for now
-    # In production, use session cookies
     return None
 
 
@@ -208,7 +233,6 @@ def oauth2callback():
         service = build("gmail", "v1", credentials=creds)
         email = service.users().getProfile(userId="me").execute()["emailAddress"]
         
-        # Store token in Supabase
         set_token(email, creds.to_json())
         logging.info(f"Authenticated: {email}")
         
@@ -229,11 +253,9 @@ def oauth2callback():
 
 @app.route("/whoami")
 def whoami():
-    # Get email from request (simplified)
     email = request.headers.get("X-User-Email") or request.args.get("email")
     
     if not email:
-        # Try to get from session (simplified - just return null for now)
         return jsonify({"email": None})
     
     user = check_usage(email)
@@ -254,7 +276,6 @@ def whoami():
 def logout():
     email = request.headers.get("X-User-Email") or request.json.get("email")
     if email:
-        # Remove token from Supabase
         update_user(email, {"token": ""})
     return jsonify({"message": "Logged out"})
 
@@ -327,7 +348,6 @@ def scan_emails():
 
         analytics = inbox_analytics(scored)
 
-        # Update usage in database
         update_user(email, {"scans_today": user.get("scans_today", 0) + 1})
 
         return jsonify({
@@ -463,7 +483,7 @@ def create_order():
     if currency == "USD":
         amount = 119
     else:
-        amount = 1000  # ₹10 for testing
+        amount = 1000
     
     try:
         order_data = {
