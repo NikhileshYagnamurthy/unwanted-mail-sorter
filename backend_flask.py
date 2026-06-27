@@ -568,6 +568,162 @@ def get_razorpay_key():
     return jsonify({"key_id": RAZORPAY_KEY_ID})
 
 
+@app.route("/pay")
+def pay_page():
+    """
+    Hosted checkout page. Opened via chrome.tabs.create() from the extension,
+    so it's a normal top-level browser tab on our own domain — the session
+    cookie is sent normally and Razorpay's checkout.js is allowed to load here
+    (unlike inside the extension popup, which is blocked by MV3's CSP).
+    """
+    email = session.get('user_email')
+    currency = request.args.get("currency", "INR")
+
+    if not email:
+        return """
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;
+                     background:#0f0f13;color:#fff;">
+          <h2 style="color:#f87171;">Not logged in</h2>
+          <p>Please log in through the extension first, then try upgrading again.</p>
+        </body></html>
+        """, 401
+
+    if not razorpay_client or not RAZORPAY_KEY_ID:
+        return """
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;
+                     background:#0f0f13;color:#fff;">
+          <h2 style="color:#f87171;">Payments unavailable</h2>
+          <p>Razorpay is not configured on the server right now.</p>
+        </body></html>
+        """, 500
+
+    amount = 119 if currency == "USD" else 1000
+    display_price = "$1.19" if currency == "USD" else "₹10"
+
+    try:
+        order = razorpay_client.order.create({
+            "amount": amount,
+            "currency": currency,
+            "receipt": f"premium_{email}_{date.today()}",
+            "payment_capture": 1,
+            "notes": {"email": email},
+        })
+    except Exception as e:
+        logging.exception("Failed to create order on /pay")
+        return f"""
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;
+                     background:#0f0f13;color:#fff;">
+          <h2 style="color:#f87171;">Could not start checkout</h2>
+          <p>{str(e)}</p>
+        </body></html>
+        """, 500
+
+    return f"""
+    <html>
+    <head>
+      <meta charset="UTF-8"/>
+      <title>InboxAI — Upgrade to Premium</title>
+      <style>
+        body {{
+          font-family: 'DM Sans', system-ui, sans-serif;
+          background:#0f0f13; color:#f0f0f5;
+          display:flex; align-items:center; justify-content:center;
+          height:100vh; margin:0; text-align:center;
+        }}
+        .card {{ max-width:360px; padding:32px; }}
+        h2 {{ color:#7c6aff; margin-bottom:12px; }}
+        p {{ color:#9090a8; font-size:14px; line-height:1.5; }}
+        button {{
+          background:#7c6aff; color:#fff; border:none; border-radius:8px;
+          padding:12px 28px; font-size:14px; font-weight:600; cursor:pointer;
+          margin-top:20px;
+        }}
+        button:disabled {{ opacity:0.5; cursor:not-allowed; }}
+        #status {{ margin-top:16px; font-size:13px; }}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2>✦ InboxAI Premium</h2>
+        <p>Account: {email}</p>
+        <p>Amount: {display_price}</p>
+        <button id="payBtn">Pay {display_price}</button>
+        <div id="status"></div>
+      </div>
+
+      <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+      <script>
+        document.getElementById("payBtn").addEventListener("click", function () {{
+          var btn = document.getElementById("payBtn");
+          var status = document.getElementById("status");
+          btn.disabled = true;
+          status.textContent = "Opening checkout...";
+
+          var options = {{
+            key: "{RAZORPAY_KEY_ID}",
+            amount: "{amount}",
+            currency: "{currency}",
+            order_id: "{order['id']}",
+            name: "InboxAI",
+            description: "Premium subscription",
+            prefill: {{ email: "{email}" }},
+            notes: {{ email: "{email}" }},
+            handler: function (response) {{
+              status.style.color = "#9090a8";
+              status.textContent = "Verifying payment...";
+              fetch("{BACKEND_URL}/payment-callback", {{
+                method: "POST",
+                credentials: "include",
+                headers: {{ "Content-Type": "application/json" }},
+                body: JSON.stringify({{
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  notes: {{ email: "{email}" }}
+                }})
+              }})
+              .then(function (r) {{ return r.json(); }})
+              .then(function (data) {{
+                if (data.status === "success") {{
+                  status.style.color = "#34d399";
+                  status.textContent = "✦ Premium activated! You can close this tab.";
+                  btn.style.display = "none";
+                  setTimeout(function () {{ window.close(); }}, 2500);
+                }} else {{
+                  status.style.color = "#f87171";
+                  status.textContent = "Payment verification failed: " + (data.error || "unknown error");
+                  btn.disabled = false;
+                }}
+              }})
+              .catch(function (err) {{
+                status.style.color = "#f87171";
+                status.textContent = "Verification request failed: " + err.message;
+                btn.disabled = false;
+              }});
+            }},
+            modal: {{
+              ondismiss: function () {{
+                btn.disabled = false;
+                status.textContent = "Checkout closed.";
+              }}
+            }},
+            theme: {{ color: "#7c6aff" }}
+          }};
+
+          var rzp = new Razorpay(options);
+          rzp.on('payment.failed', function (response) {{
+            status.style.color = "#f87171";
+            status.textContent = "Payment failed: " + response.error.description;
+            btn.disabled = false;
+          }});
+          rzp.open();
+        }});
+      </script>
+    </body>
+    </html>
+    """
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
