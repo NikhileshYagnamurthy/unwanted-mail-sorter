@@ -8,8 +8,6 @@ import json
 import logging
 from datetime import date
 import requests
-import socket
-import dns.resolver
 
 from flask import Flask, request, jsonify, redirect, session
 from flask_cors import CORS
@@ -53,33 +51,9 @@ SCOPES = [
 
 FREE_TIER_DAILY_SCANS = 5
 
-# ── Supabase Config with DNS Resolver ────────────────────────────────────────
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
+# ── Supabase Config ──────────────────────────────────────────────────────────
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://zdjyuqbgpeatbflrkfio.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-# ── Force DNS Resolution ──────────────────────────────────────────────────────
-def resolve_supabase():
-    """Force DNS resolution for Supabase domain."""
-    try:
-        resolver = dns.resolver.Resolver()
-        resolver.nameservers = ['8.8.8.8', '1.1.1.1']  # Google DNS
-        answers = resolver.resolve('zdjyuqbgpeatbflrkfio.supabase.co', 'A')
-        for rdata in answers:
-            ip = str(rdata)
-            logging.info(f"✅ Supabase IP resolved: {ip}")
-            return ip
-    except Exception as e:
-        logging.error(f"DNS resolution failed: {e}")
-        return None
-
-# Resolve IP and use it
-SUPABASE_IP = resolve_supabase()
-if SUPABASE_IP:
-    # Use IP directly with SSL verification disabled
-    SUPABASE_URL = f"https://{SUPABASE_IP}"
-    logging.info(f"Using Supabase IP: {SUPABASE_URL}")
-else:
-    logging.warning("⚠️ DNS resolution failed, using domain (may fail)")
 
 # ── Razorpay Config ──────────────────────────────────────────────────────────
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
@@ -102,7 +76,7 @@ AI_LABELS = [
 ]
 
 
-# ── Supabase REST API Functions with DNS Fix ──────────────────────────────────
+# ── Supabase REST API Functions ──────────────────────────────────────────────
 def get_supabase_headers():
     return {
         "apikey": SUPABASE_KEY,
@@ -118,7 +92,7 @@ def get_user(email: str):
         response = requests.get(
             f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}",
             headers=headers,
-            verify=False  # Disable SSL verification for IP
+            verify=True
         )
         if response.status_code == 200:
             data = response.json()
@@ -138,7 +112,7 @@ def upsert_user(email: str, data: dict):
             f"{SUPABASE_URL}/rest/v1/users",
             headers=headers,
             json={"email": email, **data},
-            verify=False
+            verify=True
         )
         if response.status_code in [200, 201]:
             result = response.json()
@@ -157,7 +131,7 @@ def update_user(email: str, data: dict):
             f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}",
             headers=headers,
             json=data,
-            verify=False
+            verify=True
         )
         if response.status_code == 200:
             result = response.json()
