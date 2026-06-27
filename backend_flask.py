@@ -20,24 +20,26 @@ import razorpay
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+
+# ── Session cookie config ──────────────────────────────────────────────────────
+# IMPORTANT: the extension calls this backend via cross-origin fetch() from a
+# chrome-extension:// origin (not a top-level navigation), so the cookie MUST be
+# SameSite=None to be sent/received on those requests. SameSite=None requires
+# Secure=True, which is fine since Render serves over HTTPS.
+app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 
 # ── CORS with credentials ──
+# NOTE: flask_cors handles ALL CORS headers here. Do NOT add a manual
+# after_request handler on top of this — Access-Control-Allow-Origin: '*'
+# is invalid when credentials are involved, and adding headers on top of what
+# flask_cors already sets produces duplicate header values that browsers reject.
 CORS(app, supports_credentials=True, origins=[
     "chrome-extension://*",
     "http://localhost:*",
     "https://unwanted-mail-sorter.onrender.com"
 ])
-
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    return response
 
 logging.basicConfig(level=logging.INFO)
 
@@ -55,6 +57,11 @@ FREE_TIER_DAILY_SCANS = 5
 # ── Supabase Config ──────────────────────────────────────────────────────────
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://zdjyuqbgpeatbflrkfio.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+if not SUPABASE_KEY:
+    logging.warning("⚠️  SUPABASE_KEY is not set — all Supabase reads/writes will silently no-op!")
+else:
+    logging.info("Supabase configured OK.")
 
 # ── Razorpay Config ──────────────────────────────────────────────────────────
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
@@ -98,6 +105,7 @@ def get_user(email: str):
         if response.status_code == 200:
             data = response.json()
             return data[0] if data else None
+        logging.error(f"get_user non-200: {response.status_code} {response.text}")
         return None
     except Exception as e:
         logging.error(f"get_user error: {e}")
@@ -108,7 +116,7 @@ def upsert_user(email: str, data: dict):
         return None
     try:
         headers = get_supabase_headers()
-        headers["Prefer"] = "resolution=merge-duplicates"
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
         response = requests.post(
             f"{SUPABASE_URL}/rest/v1/users",
             headers=headers,
@@ -118,6 +126,7 @@ def upsert_user(email: str, data: dict):
         if response.status_code in [200, 201]:
             result = response.json()
             return result[0] if result else None
+        logging.error(f"upsert_user non-200: {response.status_code} {response.text}")
         return None
     except Exception as e:
         logging.error(f"upsert_user error: {e}")
@@ -128,6 +137,7 @@ def update_user(email: str, data: dict):
         return None
     try:
         headers = get_supabase_headers()
+        headers["Prefer"] = "return=representation"
         response = requests.patch(
             f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}",
             headers=headers,
@@ -137,6 +147,7 @@ def update_user(email: str, data: dict):
         if response.status_code == 200:
             result = response.json()
             return result[0] if result else None
+        logging.error(f"update_user non-200: {response.status_code} {response.text}")
         return None
     except Exception as e:
         logging.error(f"update_user error: {e}")
@@ -240,6 +251,7 @@ def oauth2callback():
         
         set_token(email, creds.to_json())
         session['user_email'] = email
+        session.permanent = True
         logging.info(f"Authenticated: {email}")
         logging.info(f"Session after login: {dict(session)}")
         
@@ -439,8 +451,8 @@ def explain_email():
     local = data.get("local_result", {})
 
     try:
-        import openai
-        openai.api_key = openai_key
+        from openai import OpenAI
+        client = OpenAI(api_key=openai_key)
         prompt = f"""You are an email security expert. Analyze this email briefly.
 
 Subject: {subject}
@@ -451,7 +463,7 @@ Signals detected: {', '.join(local.get('reasons', []))}
 
 Explain in 2-3 plain English sentences what this email is and if the user should act on it."""
 
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=150,
@@ -488,7 +500,7 @@ def create_order():
     if not email:
         return jsonify({"error": "Not authenticated"}), 401
     
-    currency = request.json.get("currency", "INR")
+    currency = (request.json or {}).get("currency", "INR")
     
     if currency == "USD":
         amount = 119
