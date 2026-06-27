@@ -9,7 +9,7 @@ import logging
 from datetime import date
 import requests
 
-from flask import Flask, request, jsonify, redirect
+from flask import Flask, request, jsonify, redirect, session
 from flask_cors import CORS
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -19,8 +19,16 @@ from scorer import score_email, batch_score, inbox_analytics
 import razorpay
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+CORS(app, supports_credentials=True, origins=[
+    "chrome-extension://*",
+    "http://localhost:*",
+    "https://unwanted-mail-sorter.onrender.com"
+])
 
 logging.basicConfig(level=logging.INFO)
 
@@ -47,7 +55,7 @@ razorpay_client = razorpay.Client(
     auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)
 ) if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET else None
 
-# Write credentials.json from environment variable set on Render
+# Write credentials.json from environment variable
 if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
     with open(GOOGLE_CLIENT_SECRETS_FILE, "w") as f:
         f.write(os.environ["GOOGLE_CREDENTIALS_JSON"])
@@ -62,7 +70,6 @@ AI_LABELS = [
 
 # ── Supabase REST API Functions ──────────────────────────────────────────────
 def get_supabase_headers():
-    """Get headers for Supabase REST API calls."""
     return {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -70,7 +77,6 @@ def get_supabase_headers():
     }
 
 def get_user(email: str):
-    """Get user from Supabase using REST API."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     try:
@@ -88,7 +94,6 @@ def get_user(email: str):
         return None
 
 def upsert_user(email: str, data: dict):
-    """Insert or update user in Supabase using REST API."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     try:
@@ -108,7 +113,6 @@ def upsert_user(email: str, data: dict):
         return None
 
 def update_user(email: str, data: dict):
-    """Update user in Supabase using REST API."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     try:
@@ -127,7 +131,6 @@ def update_user(email: str, data: dict):
         return None
 
 def check_usage(email: str):
-    """Check and update user usage."""
     user = get_user(email)
     today = str(date.today())
     
@@ -147,14 +150,12 @@ def check_usage(email: str):
     return user
 
 def get_token(email: str):
-    """Get stored Gmail token."""
     user = get_user(email)
     if user and user.get("token"):
         return user["token"]
     return None
 
 def set_token(email: str, token: str):
-    """Store Gmail token."""
     upsert_user(email, {"token": token})
     return True
 
@@ -166,13 +167,11 @@ def _creds(email):
         return None
     return Credentials.from_authorized_user_info(json.loads(token_json))
 
-
 def _service(email):
     creds = _creds(email)
     if not creds:
         return None
     return build("gmail", "v1", credentials=creds)
-
 
 def _get_or_create_label(service, name):
     labels = service.users().labels().list(userId="me").execute().get("labels", [])
@@ -188,7 +187,6 @@ def _get_or_create_label(service, name):
         },
     ).execute()
     return created["id"]
-
 
 def _ensure_ai_labels(service):
     label_map = {}
@@ -228,7 +226,11 @@ def oauth2callback():
         service = build("gmail", "v1", credentials=creds)
         email = service.users().getProfile(userId="me").execute()["emailAddress"]
         
+        # Store token in Supabase
         set_token(email, creds.to_json())
+        
+        # Store email in session
+        session['user_email'] = email
         logging.info(f"Authenticated: {email}")
         
         return """
@@ -248,7 +250,7 @@ def oauth2callback():
 
 @app.route("/whoami")
 def whoami():
-    email = request.headers.get("X-User-Email") or request.args.get("email")
+    email = session.get('user_email')
     
     if not email:
         return jsonify({"email": None})
@@ -269,15 +271,13 @@ def whoami():
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    email = request.headers.get("X-User-Email") or request.json.get("email")
-    if email:
-        update_user(email, {"token": ""})
+    session.pop('user_email', None)
     return jsonify({"message": "Logged out"})
 
 
 @app.route("/scan-emails")
 def scan_emails():
-    email = request.headers.get("X-User-Email") or request.args.get("email")
+    email = session.get('user_email')
     if not email:
         return jsonify({"error": "Not authenticated"}), 401
 
@@ -362,7 +362,7 @@ def scan_emails():
 
 @app.route("/cleanup", methods=["POST"])
 def cleanup():
-    email = request.headers.get("X-User-Email") or request.json.get("email")
+    email = session.get('user_email')
     if not email:
         return jsonify({"error": "Not authenticated"}), 401
 
@@ -402,7 +402,7 @@ def cleanup():
 
 @app.route("/explain-email", methods=["POST"])
 def explain_email():
-    email = request.headers.get("X-User-Email") or request.json.get("email")
+    email = session.get('user_email')
     if not email:
         return jsonify({"error": "Not authenticated"}), 401
 
@@ -450,7 +450,7 @@ Explain in 2-3 plain English sentences what this email is and if the user should
 
 @app.route("/upgrade", methods=["POST"])
 def upgrade():
-    email = request.json.get("email")
+    email = session.get('user_email')
     if not email:
         return jsonify({"error": "Not authenticated"}), 401
     
@@ -469,7 +469,7 @@ def create_order():
     if not razorpay_client:
         return jsonify({"error": "Razorpay not configured"}), 500
     
-    email = request.json.get("email")
+    email = session.get('user_email')
     if not email:
         return jsonify({"error": "Not authenticated"}), 401
     
