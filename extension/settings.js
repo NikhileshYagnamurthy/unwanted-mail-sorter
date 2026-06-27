@@ -1,6 +1,7 @@
 // settings.js — InboxAI Settings
-
 const BACKEND = "https://unwanted-mail-sorter.onrender.com";
+
+let selectedCurrency = "INR";
 
 // ── Load settings from Chrome storage ─────────────────────────────────────────
 chrome.storage.local.get(
@@ -38,10 +39,8 @@ async function checkStatus() {
       headers: { "Content-Type": "application/json" },
     });
     const data = await res.json();
-
     const premiumStatus = document.getElementById("premiumStatus");
     const btnUpgrade    = document.getElementById("btnUpgrade");
-
     if (!data || !data.email) {
       premiumStatus.style.display = "block";
       premiumStatus.textContent   = "⚠️ Please login to the extension first";
@@ -50,7 +49,6 @@ async function checkStatus() {
       btnUpgrade.textContent      = "Login Required";
       return;
     }
-
     if (data.is_premium) {
       premiumStatus.style.display = "block";
       premiumStatus.textContent   = "✦ You are already a premium member!";
@@ -69,9 +67,9 @@ document.querySelectorAll(".currency-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".currency-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
-    const cur = btn.dataset.currency;
+    selectedCurrency = btn.dataset.currency;
     document.getElementById("btnUpgrade").textContent =
-      cur === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
+      selectedCurrency === "INR" ? "Upgrade — ₹10/mo" : "Upgrade — $1.19/mo";
   });
 });
 
@@ -81,6 +79,7 @@ document.querySelectorAll(".currency-btn").forEach(btn => {
 // due to strict Content Security Policy. Trying to load it inside the extension
 // silently fails — Razorpay never initializes.
 // Fix: open our /pay page hosted on Render (normal webpage, no CSP issues).
+// We pass the selected currency along so /pay charges the right amount.
 document.getElementById("btnUpgrade").addEventListener("click", () => {
-  chrome.tabs.create({ url: `${BACKEND}/pay` });
+  chrome.tabs.create({ url: `${BACKEND}/pay?currency=${selectedCurrency}` });
 });
