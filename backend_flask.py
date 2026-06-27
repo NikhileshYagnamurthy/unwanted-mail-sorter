@@ -18,7 +18,7 @@ from scorer import score_email, batch_score, inbox_analytics
 import razorpay
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
-from supabase import create_client, Client
+from supabase_py import create_client, Client
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
