@@ -100,7 +100,8 @@ def upsert_user(email: str, data: dict):
             json={"email": email, **data}
         )
         if response.status_code in [200, 201]:
-            return response.json()[0] if response.json() else None
+            result = response.json()
+            return result[0] if result else None
         return None
     except Exception as e:
         logging.error(f"upsert_user error: {e}")
@@ -118,8 +119,8 @@ def update_user(email: str, data: dict):
             json=data
         )
         if response.status_code == 200:
-            data = response.json()
-            return data[0] if data else None
+            result = response.json()
+            return result[0] if result else None
         return None
     except Exception as e:
         logging.error(f"update_user error: {e}")
@@ -131,7 +132,6 @@ def check_usage(email: str):
     today = str(date.today())
     
     if not user:
-        # Create new user
         user = upsert_user(email, {
             "token": "",
             "is_premium": False,
@@ -140,7 +140,6 @@ def check_usage(email: str):
         })
         return user or {"is_premium": False, "scans_today": 0}
     
-    # Reset scans if new day
     if user.get("last_reset_date") != today:
         update_user(email, {"scans_today": 0, "last_reset_date": today})
         user["scans_today"] = 0
@@ -196,10 +195,6 @@ def _ensure_ai_labels(service):
     for name in AI_LABELS:
         label_map[name] = _get_or_create_label(service, name)
     return label_map
-
-
-def _current_user():
-    return None
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
