@@ -20,10 +20,11 @@ import razorpay
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
-app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
+# ── CORS with credentials ──
 CORS(app, supports_credentials=True, origins=[
     "chrome-extension://*",
     "http://localhost:*",
@@ -240,6 +241,7 @@ def oauth2callback():
         set_token(email, creds.to_json())
         session['user_email'] = email
         logging.info(f"Authenticated: {email}")
+        logging.info(f"Session after login: {dict(session)}")
         
         return """
         <html>
@@ -259,6 +261,8 @@ def oauth2callback():
 @app.route("/whoami")
 def whoami():
     email = session.get('user_email')
+    logging.info(f"whoami called, session email: {email}")
+    
     if not email:
         return jsonify({"email": None})
     
@@ -285,7 +289,11 @@ def logout():
 @app.route("/scan-emails")
 def scan_emails():
     email = session.get('user_email')
+    logging.info(f"scan-emails called, session email: {email}")
+    logging.info(f"Full session: {dict(session)}")
+    
     if not email:
+        logging.warning("No email in session, returning 401")
         return jsonify({"error": "Not authenticated"}), 401
 
     user = check_usage(email)
