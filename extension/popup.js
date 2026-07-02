@@ -165,23 +165,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 btnLogin.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ action: "openLogin" });
-    showToast("Login window opened. Complete login and come back.", "", 5000);
+    showLoading("Signing in with Google...");
+    chrome.runtime.sendMessage({ action: "login" }, (response) => {
+        hideLoading();
+        if (response && response.success) {
+            showToast("✦ Signed in successfully!", "success");
+            checkAuth(); // Refresh UI
+        } else {
+            console.error("Login failed:", response?.error);
+            // Fallback to legacy login if identity fails
+            chrome.runtime.sendMessage({ action: "openLogin" });
+            showToast("Chrome Identity failed. Opening legacy login...", "error", 5000);
+        }
+    });
 });
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 btnLogout.addEventListener("click", async () => {
+    showLoading("Signing out...");
+    // 1. Backend logout (for session)
     await api("/logout", { method: "POST" }).catch(() => {});
-    await clearCachedUser();
-    userBadge.classList.add("hidden");
-    selectedIds.clear();
-    emailList.innerHTML = "";
-    emailList.appendChild(emptyState);
-    emptyState.classList.remove("hidden");
-    statsBar.classList.add("hidden");
-    usageBar.classList.add("hidden");
-    showView(viewLogin);
-    showToast("Signed out");
+    
+    // 2. Extension logout (for token)
+    chrome.runtime.sendMessage({ action: "logout" }, async () => {
+        await clearCachedUser();
+        userBadge.classList.add("hidden");
+        selectedIds.clear();
+        emailList.innerHTML = "";
+        emailList.appendChild(emptyState);
+        emptyState.classList.remove("hidden");
+        statsBar.classList.add("hidden");
+        usageBar.classList.add("hidden");
+        showView(viewLogin);
+        hideLoading();
+        showToast("Signed out");
+    });
 });
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -218,19 +236,24 @@ btnScan.addEventListener("click", async () => {
     selectedIds.clear();
 
     try {
-        const data = await api("/scan-emails?max=25");
+        // Now calling local background action instead of backend directly
+        const response = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({ action: "scanEmails", max: 25 }, resolve);
+        });
 
-        if (data.error) {
+        if (!response.success) {
+            const error = response.error;
             hideLoading();
-            if (data.error === "Daily scan limit reached") {
+            if (error === "Daily scan limit reached") {
                 showToast("Daily limit reached. Upgrade for unlimited scans.", "error", 5000);
             } else {
-                showToast(data.error, "error");
+                showToast(error, "error");
             }
             btnScan.disabled = false;
             return;
         }
 
+        const data = response.data;
         const emails = data.emails || [];
         renderEmails(emails);
         renderStats(data.analytics);
@@ -360,14 +383,19 @@ btnCleanup.addEventListener("click", async () => {
     btnCleanup.disabled = true;
 
     try {
-        const data = await api("/cleanup", {
-            method: "POST",
-            body: JSON.stringify({ message_ids: [...selectedIds] }),
+        // Now calling local background action instead of backend directly
+        const response = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({ 
+                action: "cleanup", 
+                message_ids: [...selectedIds] 
+            }, resolve);
         });
 
-        if (data.error) {
-            showToast(data.error, "error", 5000);
+        if (!response.success) {
+            const error = response.error;
+            showToast(error, "error", 5000);
         } else {
+            const data = response.data;
             showToast(`✓ Archived ${data.cleaned} emails`, "success");
             selectedIds.forEach(id => {
                 const card = document.querySelector(`.email-card[data-id="${id}"]`);
