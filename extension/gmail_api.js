@@ -146,12 +146,10 @@ async function batchModifyMessages(ids, addLabelIds = [], removeLabelIds = []) {
 }
 
 // Export for background.js
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        listMessages,
-        getMessageMetadata,
-        getOrCreateLabel,
-        modifyMessage,
-        batchModifyMessages
-    };
-}
+export {
+    listMessages,
+    getMessageMetadata,
+    getOrCreateLabel,
+    modifyMessage,
+    batchModifyMessages
+};
