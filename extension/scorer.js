@@ -229,7 +229,5 @@ function inboxAnalytics(scoredEmails) {
     };
 }
 
-// Export for parity testing if in Node.js
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { scoreEmail, batchScore, inboxAnalytics };
-}
+// Export for background.js
+export { scoreEmail, batchScore, inboxAnalytics };
