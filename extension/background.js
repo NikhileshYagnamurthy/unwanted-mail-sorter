@@ -144,12 +144,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
 
                 // 2. Fetch from Gmail API directly
+                console.log("Fetching messages from Gmail...");
                 const maxResults = message.max || 25;
                 const query = message.query || "in:inbox";
                 const messages = await gmail.listMessages(query, maxResults);
+                console.log(`Found ${messages.length} messages.`);
 
                 const rawEmails = [];
                 for (const msg of messages) {
+                    console.log(`Fetching metadata for message ${msg.id}...`);
                     const data = await gmail.getMessageMetadata(msg.id);
                     const hdrs = {};
                     (data.payload.headers || []).forEach(h => hdrs[h.name] = h.value);
@@ -167,14 +170,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
 
                 // 3. Local Scoring
+                console.log("Scoring emails locally...");
                 const scored = batchScore(rawEmails);
                 
                 // 4. Apply labels in Gmail
+                console.log("Applying labels in Gmail...");
                 for (const e of scored) {
+                    console.log(`Labeling message ${e.id} as ${e.label}...`);
                     const labelId = await gmail.getOrCreateLabel(e.label);
                     const addLabels = [labelId];
                     const removeLabels = e.archive ? ["INBOX"] : [];
-                    await gmail.modifyMessage(e.id, addLabels, removeLabels).catch(() => {});
+                    await gmail.modifyMessage(e.id, addLabels, removeLabels).catch((err) => {
+                        console.warn(`Failed to label message ${e.id}:`, err);
+                    });
                 }
 
                 const analytics = inboxAnalytics(scored);
