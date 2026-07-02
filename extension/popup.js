@@ -172,10 +172,11 @@ btnLogin.addEventListener("click", () => {
             showToast("✦ Signed in successfully!", "success");
             checkAuth(); // Refresh UI
         } else {
-            console.error("Login failed:", response?.error);
+            const errorMsg = response?.error || "Connection to background worker lost.";
+            console.error("Login failed:", errorMsg);
             // Fallback to legacy login if identity fails
             chrome.runtime.sendMessage({ action: "openLogin" });
-            showToast("Chrome Identity failed. Opening legacy login...", "error", 5000);
+            showToast(`Login failed: ${errorMsg}`, "error", 5000);
         }
     });
 });
