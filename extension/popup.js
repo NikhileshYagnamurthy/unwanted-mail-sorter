@@ -6,57 +6,55 @@ const BACKEND = "https://unwanted-mail-sorter.onrender.com";
 // ── Cache user in storage ──
 async function getCachedUser() {
     return new Promise((resolve) => {
-        chrome.storage.local.get(["cachedEmail"], (result) => {
-            resolve(result.cachedEmail || null);
+        chrome.storage.local.get(["cachedEmail", "cachedPremium"], (result) => {
+            resolve(result.cachedEmail ? { email: result.cachedEmail, is_premium: result.cachedPremium || false } : null);
         });
     });
 }
 
-async function setCachedUser(email) {
+async function setCachedUser(email, is_premium = false) {
     return new Promise((resolve) => {
-        chrome.storage.local.set({ cachedEmail: email }, resolve);
+        chrome.storage.local.set({ cachedEmail: email, cachedPremium: is_premium }, resolve);
     });
 }
 
 async function clearCachedUser() {
     return new Promise((resolve) => {
-        chrome.storage.local.remove("cachedEmail", resolve);
+        chrome.storage.local.remove(["cachedEmail", "cachedPremium", "backendToken"], resolve);
     });
 }
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-const viewLogin = $("viewLogin");
-const viewDash = $("viewDashboard");
-const btnLogin = $("btnLogin");
-const btnScan = $("btnScan");
-const btnCleanup = $("btnCleanup");
-const btnCleanLbl = $("btnCleanupLabel");
-const btnLogout = $("btnLogout");
-const btnSettings = $("btnSettings");
-const emailList = $("emailList");
-const emptyState = $("emptyState");
-const statsBar = $("statsBar");
-const usageBar = $("usageBar");
-const loadingOvl = $("loadingOverlay");
-const loadingMsg = $("loadingMsg");
-const toast = $("toast");
-const userBadge = $("userBadge");
-const upgradeLink = $("upgradeLink");
+const viewLogin    = $("viewLogin");
+const viewDash     = $("viewDashboard");
+const btnLogin     = $("btnLogin");
+const btnScan      = $("btnScan");
+const btnCleanup   = $("btnCleanup");
+const btnCleanLbl  = $("btnCleanupLabel");
+const btnLogout    = $("btnLogout");
+const btnSettings  = $("btnSettings");
+const emailList    = $("emailList");
+const emptyState   = $("emptyState");
+const statsBar     = $("statsBar");
+const usageBar     = $("usageBar");
+const loadingOvl   = $("loadingOverlay");
+const loadingMsg   = $("loadingMsg");
+const toast        = $("toast");
+const userBadge    = $("userBadge");
+const upgradeLink  = $("upgradeLink");
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let selectedIds = new Set();
-let toastTimer = null;
-let isChecking = false;
+let selectedIds   = new Set();
+let toastTimer    = null;
+let isChecking    = false;
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 function showToast(msg, type = "", duration = 3000) {
     toast.textContent = msg;
     toast.className = `toast ${type}`;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-        toast.className = "toast hidden";
-    }, duration);
+    toastTimer = setTimeout(() => { toast.className = "toast hidden"; }, duration);
 }
 
 function showLoading(msg = "Scanning your inbox…") {
@@ -74,33 +72,23 @@ function showView(view) {
     view.classList.remove("hidden");
 }
 
-// ── API calls via background service worker ──────────────────────────────────
+// ── Lightweight API helper (for /whoami only — still session/JWT based) ───────
 async function api(path, opts = {}) {
     return new Promise((resolve, reject) => {
-        const url = `${BACKEND}${path}`;
-        const method = opts.method || "GET";
-        const body = opts.body || null;
-        const headers = opts.headers || { "Content-Type": "application/json" };
-        
-        console.log("Sending API request to background:", url);
-        
         chrome.runtime.sendMessage({
             action: "apiRequest",
-            url: url,
-            method: method,
-            headers: headers,
-            body: body
+            url: `${BACKEND}${path}`,
+            method: opts.method || "GET",
+            headers: opts.headers || { "Content-Type": "application/json" },
+            body: opts.body || null,
         }, (response) => {
             if (chrome.runtime.lastError) {
-                console.error("chrome.runtime.lastError:", chrome.runtime.lastError);
                 reject(new Error(chrome.runtime.lastError.message));
                 return;
             }
             if (response && response.success) {
-                console.log("API response received:", response.data);
                 resolve(response.data);
             } else {
-                console.error("API Error:", response?.error);
                 reject(new Error(response?.error || "API request failed"));
             }
         });
@@ -111,40 +99,31 @@ async function api(path, opts = {}) {
 async function checkAuth() {
     if (isChecking) return;
     isChecking = true;
-    
     try {
         const data = await api("/whoami");
-        console.log("checkAuth response:", data);
-        
         if (data && data.email) {
-            await setCachedUser(data.email);
+            await setCachedUser(data.email, data.is_premium);
             userBadge.textContent = data.email;
             userBadge.classList.remove("hidden");
             showView(viewDash);
             updateUsageBar(data);
             return true;
-        } else {
-            const cached = await getCachedUser();
-            if (cached) {
-                userBadge.textContent = cached;
-                userBadge.classList.remove("hidden");
-                showView(viewDash);
-                try {
-                    const refreshData = await api("/whoami");
-                    if (refreshData && refreshData.email) {
-                        updateUsageBar(refreshData);
-                    }
-                } catch (e) {}
-                return true;
-            }
-            showView(viewLogin);
-            return false;
         }
+        // No valid session — check local cache as fallback display only
+        const cached = await getCachedUser();
+        if (cached) {
+            userBadge.textContent = cached.email;
+            userBadge.classList.remove("hidden");
+            showView(viewDash);
+            return true;
+        }
+        showView(viewLogin);
+        return false;
     } catch (e) {
         console.error("checkAuth error:", e);
         const cached = await getCachedUser();
         if (cached) {
-            userBadge.textContent = cached;
+            userBadge.textContent = cached.email;
             userBadge.classList.remove("hidden");
             showView(viewDash);
             return true;
@@ -159,35 +138,46 @@ async function checkAuth() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("Popup loaded, checking auth...");
     checkAuth();
 });
 
 // ── Login ─────────────────────────────────────────────────────────────────────
+// Uses the new background.js `login` action → chrome.identity.getAuthToken
 btnLogin.addEventListener("click", () => {
-    showLoading("Signing in with Google...");
-    chrome.runtime.sendMessage({ action: "login" }, (response) => {
+    showLoading("Connecting to Google…");
+    btnLogin.disabled = true;
+
+    chrome.runtime.sendMessage({ action: "login" }, async (response) => {
         hideLoading();
+        btnLogin.disabled = false;
+
+        if (chrome.runtime.lastError) {
+            showToast("Login failed: " + chrome.runtime.lastError.message, "error", 5000);
+            return;
+        }
+
         if (response && response.success) {
-            showToast("✦ Signed in successfully!", "success");
-            checkAuth(); // Refresh UI
+            await setCachedUser(response.email);
+            userBadge.textContent = response.email;
+            userBadge.classList.remove("hidden");
+            showView(viewDash);
+            // Refresh usage data
+            api("/whoami").then(d => { if (d) updateUsageBar(d); }).catch(() => {});
+            showToast("✦ Signed in successfully", "success");
         } else {
-            const errorMsg = response?.error || "Connection to background worker lost.";
-            console.error("Login failed:", errorMsg);
-            // Fallback to legacy login if identity fails
-            chrome.runtime.sendMessage({ action: "openLogin" });
-            showToast(`Login failed: ${errorMsg}`, "error", 5000);
+            const err = response?.error || "Unknown error";
+            // Give actionable error message
+            if (err.includes("OAuth2 not granted") || err.includes("No Google token")) {
+                showToast("Sign-in setup needed — see README for OAuth steps", "error", 6000);
+            } else {
+                showToast("Login failed: " + err, "error", 5000);
+            }
         }
     });
 });
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 btnLogout.addEventListener("click", async () => {
-    showLoading("Signing out...");
-    // 1. Backend logout (for session)
-    await api("/logout", { method: "POST" }).catch(() => {});
-    
-    // 2. Extension logout (for token)
     chrome.runtime.sendMessage({ action: "logout" }, async () => {
         await clearCachedUser();
         userBadge.classList.add("hidden");
@@ -198,7 +188,6 @@ btnLogout.addEventListener("click", async () => {
         statsBar.classList.add("hidden");
         usageBar.classList.add("hidden");
         showView(viewLogin);
-        hideLoading();
         showToast("Signed out");
     });
 });
@@ -208,7 +197,7 @@ btnSettings.addEventListener("click", () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("settings.html") });
 });
 
-// ── Upgrade Link (opens settings page) ──────────────────────────────────────
+// ── Upgrade Link ──────────────────────────────────────────────────────────────
 if (upgradeLink) {
     upgradeLink.addEventListener("click", (e) => {
         e.preventDefault();
@@ -224,79 +213,95 @@ function updateUsageBar(data) {
     }
     const FREE = 5;
     const used = data.scans_today || 0;
-    const remaining = Math.max(0, FREE - used);
+    const remaining = typeof data.scans_remaining === "number"
+        ? data.scans_remaining
+        : Math.max(0, FREE - used);
     $("usageText").textContent = `${remaining} free scan${remaining !== 1 ? "s" : ""} remaining today`;
     $("usageFill").style.width = `${Math.min(100, (used / FREE) * 100)}%`;
     usageBar.classList.remove("hidden");
 }
 
 // ── Scan ──────────────────────────────────────────────────────────────────────
-btnScan.addEventListener("click", async () => {
+// Uses the new `scanEmails` action in background.js which:
+//  1. Checks usage/auth with backend JWT
+//  2. Fetches emails directly from Gmail API (parallel)
+//  3. Scores locally via scorer.js
+//  4. Applies labels in Gmail
+//  5. Notifies backend to increment usage counter
+btnScan.addEventListener("click", () => {
     showLoading("Scanning your inbox…");
     btnScan.disabled = true;
     selectedIds.clear();
 
-    try {
-        // Now calling local background action instead of backend directly
-        const response = await new Promise((resolve) => {
-            chrome.runtime.sendMessage({ action: "scanEmails", max: 25 }, resolve);
-        });
+    // Read user's scanCount setting
+    chrome.storage.local.get(["scanCount"], (s) => {
+        const max = s.scanCount || 25;
 
-        if (!response.success) {
-            const error = response.error;
-            hideLoading();
-            if (error === "Daily scan limit reached") {
-                showToast("Daily limit reached. Upgrade for unlimited scans.", "error", 5000);
-            } else {
-                showToast(error, "error");
+        chrome.runtime.sendMessage(
+            { action: "scanEmails", max, query: "in:inbox" },
+            (response) => {
+                hideLoading();
+                btnScan.disabled = false;
+
+                if (chrome.runtime.lastError) {
+                    showToast("Extension error: " + chrome.runtime.lastError.message, "error");
+                    return;
+                }
+
+                if (!response || !response.success) {
+                    const err = response?.error || "Scan failed";
+                    if (err === "Daily scan limit reached") {
+                        showToast("Daily limit reached. Upgrade for unlimited scans.", "error", 5000);
+                    } else if (err.includes("Not authenticated") || err.includes("expired")) {
+                        showToast("Session expired — please sign in again.", "error", 5000);
+                        showView(viewLogin);
+                    } else {
+                        showToast(err, "error");
+                    }
+                    return;
+                }
+
+                const data = response.data;
+                const emails = data.emails || [];
+                renderEmails(emails);
+                renderStats(data.analytics);
+
+                // Update usage display from scan response
+                updateUsageBar({
+                    is_premium: data.scans_remaining === "unlimited",
+                    scans_today: data.scans_used || 0,
+                    scans_remaining: data.scans_remaining,
+                });
+
+                showToast(`✦ Scanned ${emails.length} email${emails.length !== 1 ? "s" : ""}`, "success");
             }
-            btnScan.disabled = false;
-            return;
-        }
-
-        const data = response.data;
-        const emails = data.emails || [];
-        renderEmails(emails);
-        renderStats(data.analytics);
-
-        const whoami = await api("/whoami").catch(() => null);
-        if (whoami) updateUsageBar(whoami);
-
-        const count = emails.length;
-        showToast(`✦ Scanned ${count} email${count !== 1 ? "s" : ""}`, "success");
-
-    } catch (e) {
-        console.error("Scan error:", e);
-        showToast("Connection failed. Is the backend awake?", "error");
-    } finally {
-        hideLoading();
-        btnScan.disabled = false;
-    }
+        );
+    });
 });
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 function renderStats(analytics) {
     if (!analytics) return;
-    $("statTotal").textContent = analytics.total ?? 0;
-    $("statClutter").textContent = `${analytics.clutter_score ?? 0}%`;
+    $("statTotal").textContent    = analytics.total ?? 0;
+    $("statClutter").textContent  = `${analytics.clutter_score ?? 0}%`;
     $("statPhishing").textContent = analytics.phishing_count ?? 0;
-    $("statClean").textContent = analytics.archiveable ?? 0;
+    $("statClean").textContent    = analytics.archiveable ?? 0;
     statsBar.classList.remove("hidden");
 }
 
 // ── Badge colour map ──────────────────────────────────────────────────────────
 const BADGE_CLASS = {
-    "Promotion": "badge-promotion",
-    "Newsletter": "badge-newsletter",
-    "Phishing Risk": "badge-phishing",
-    "Security Alert": "badge-security",
-    "OTP / Auth": "badge-security",
-    "Finance": "badge-finance",
-    "Order Update": "badge-finance",
-    "Recruiter": "badge-recruiter",
-    "Social Update": "badge-social",
+    "Promotion":       "badge-promotion",
+    "Newsletter":      "badge-newsletter",
+    "Phishing Risk":   "badge-phishing",
+    "Security Alert":  "badge-security",
+    "OTP / Auth":      "badge-security",
+    "Finance":         "badge-finance",
+    "Order Update":    "badge-finance",
+    "Recruiter":       "badge-recruiter",
+    "Social Update":   "badge-social",
     "Meeting / Event": "badge-important",
-    "Important": "badge-important",
+    "Important":       "badge-important",
 };
 
 // ── Render email list ─────────────────────────────────────────────────────────
@@ -309,7 +314,6 @@ function renderEmails(emails) {
         btnCleanup.classList.add("hidden");
         return;
     }
-
     emptyState.classList.add("hidden");
 
     emails.forEach(email => {
@@ -318,11 +322,10 @@ function renderEmails(emails) {
         card.dataset.id = email.id;
 
         const badgeClass = BADGE_CLASS[email.category] || "badge-default";
-
         const reasonTags = (email.reasons || []).map(r => {
             const isWarn = r.toLowerCase().includes("suspicious") ||
-                r.toLowerCase().includes("spoofing") ||
-                r.toLowerCase().includes("urgency");
+                           r.toLowerCase().includes("spoofing") ||
+                           r.toLowerCase().includes("urgency");
             return `<span class="reason-tag ${isWarn ? "warn" : ""}">${r}</span>`;
         }).join("");
 
@@ -371,33 +374,37 @@ function updateCleanupButton() {
         btnCleanup.classList.add("hidden");
     } else {
         btnCleanup.classList.remove("hidden");
-        btnCleanLbl.textContent =
-            `Archive ${selectedIds.size} email${selectedIds.size !== 1 ? "s" : ""}`;
+        btnCleanLbl.textContent = `Archive ${selectedIds.size} email${selectedIds.size !== 1 ? "s" : ""}`;
     }
 }
 
 // ── Cleanup ───────────────────────────────────────────────────────────────────
-btnCleanup.addEventListener("click", async () => {
+// Uses the new `cleanup` action in background.js which:
+//  1. Validates count against backend (free tier: 50 max)
+//  2. Calls Gmail batchModify directly
+btnCleanup.addEventListener("click", () => {
     if (selectedIds.size === 0) return;
 
     showLoading(`Archiving ${selectedIds.size} emails…`);
     btnCleanup.disabled = true;
 
-    try {
-        // Now calling local background action instead of backend directly
-        const response = await new Promise((resolve) => {
-            chrome.runtime.sendMessage({ 
-                action: "cleanup", 
-                message_ids: [...selectedIds] 
-            }, resolve);
-        });
+    chrome.runtime.sendMessage(
+        { action: "cleanup", message_ids: [...selectedIds] },
+        (response) => {
+            hideLoading();
+            btnCleanup.disabled = false;
 
-        if (!response.success) {
-            const error = response.error;
-            showToast(error, "error", 5000);
-        } else {
-            const data = response.data;
-            showToast(`✓ Archived ${data.cleaned} emails`, "success");
+            if (chrome.runtime.lastError) {
+                showToast("Extension error: " + chrome.runtime.lastError.message, "error");
+                return;
+            }
+
+            if (!response || !response.success) {
+                showToast(response?.error || "Cleanup failed. Please retry.", "error", 5000);
+                return;
+            }
+
+            showToast(`✓ Archived ${response.data.cleaned} emails`, "success");
             selectedIds.forEach(id => {
                 const card = document.querySelector(`.email-card[data-id="${id}"]`);
                 if (card) card.remove();
@@ -405,10 +412,5 @@ btnCleanup.addEventListener("click", async () => {
             selectedIds.clear();
             updateCleanupButton();
         }
-    } catch (e) {
-        showToast("Cleanup failed. Please retry.", "error");
-    } finally {
-        hideLoading();
-        btnCleanup.disabled = false;
-    }
+    );
 });
