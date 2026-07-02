@@ -236,9 +236,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     if (message.action === "login") {
-        performAuthExchange(true)
-            .then(data => sendResponse({ success: true, email: data.email }))
-            .catch(err => sendResponse({ success: false, error: err.message }));
+        (async () => {
+            try {
+                const data = await performAuthExchange(true);
+                sendResponse({ success: true, email: data.email });
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
         return true;
     }
 
