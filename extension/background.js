@@ -38,42 +38,28 @@ async function performSilentAuth() {
 }
 
 // ── Interactive auth — ALWAYS shows Google account picker ──────────────────────
-// Uses launchWebAuthFlow with prompt=select_account so the user always sees
-// the account chooser regardless of Chrome's cached state.
-// getAuthToken({ interactive: true }) silently reuses the Chrome profile account
-// without showing any UI — that's why we use launchWebAuthFlow here instead.
+// Clears Chrome's token cache before calling getAuthToken so Google is forced
+// to show the full account chooser instead of silently reusing the cached grant.
+// This avoids the redirect_uri_mismatch that launchWebAuthFlow causes.
 async function performInteractiveAuth() {
+    // Step 1: Wipe cached tokens — this is what forces the account picker to appear
+    await new Promise(resolve => chrome.identity.clearAllCachedAuthTokens(resolve));
+
+    // Step 2: Now getAuthToken has nothing cached, so Google shows full sign-in UI
     return new Promise((resolve, reject) => {
-        const manifest    = chrome.runtime.getManifest();
-        const clientId    = manifest.oauth2.client_id;
-        const scopes      = manifest.oauth2.scopes.join(" ");
-        const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
-
-        const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-        authUrl.searchParams.set("client_id",     clientId);
-        authUrl.searchParams.set("response_type", "token");
-        authUrl.searchParams.set("redirect_uri",  redirectUri);
-        authUrl.searchParams.set("scope",         scopes);
-        authUrl.searchParams.set("prompt",        "select_account"); // always show picker
-
-        chrome.identity.launchWebAuthFlow(
-            { url: authUrl.toString(), interactive: true },
-            async (redirectUrl) => {
-                if (chrome.runtime.lastError || !redirectUrl) {
-                    reject(new Error(chrome.runtime.lastError?.message || "Sign-in cancelled"));
-                    return;
-                }
-                // Access token lives in the URL hash: #access_token=xxx&token_type=Bearer&...
-                const params      = new URLSearchParams(new URL(redirectUrl).hash.slice(1));
-                const accessToken = params.get("access_token");
-                if (!accessToken) {
-                    reject(new Error("No access token in response"));
-                    return;
-                }
-                try { resolve(await exchangeTokenWithBackend(accessToken)); }
-                catch (e) { reject(e); }
+        chrome.identity.getAuthToken({ interactive: true }, async (googleToken) => {
+            if (chrome.runtime.lastError || !googleToken) {
+                const err = chrome.runtime.lastError?.message || "No Google token";
+                console.error("Google Auth Error:", err);
+                reject(new Error(err));
+                return;
             }
-        );
+            try {
+                resolve(await exchangeTokenWithBackend(googleToken));
+            } catch (e) {
+                reject(e);
+            }
+        });
     });
 }
 
