@@ -5,9 +5,15 @@ import * as gmail from './gmail_api.js';
 console.log("InboxAI service worker started.");
 
 const BACKEND = "https://unwanted-mail-sorter.onrender.com";
+const OAUTH_CLIENT_ID = "707704340887-lmlgo23fvtvl98sfmid12fi1r6078kbm.apps.googleusercontent.com";
+const OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.readonly"
+];
+
 let backendToken = null;
 
-// ── Token exchange with backend ────────────────────────────────────────────────
 async function exchangeTokenWithBackend(googleToken) {
     const response = await fetch(`${BACKEND}/auth/verify-google`, {
         method: "POST",
@@ -22,59 +28,53 @@ async function exchangeTokenWithBackend(googleToken) {
     return { token: data.token, email: data.email };
 }
 
-// ── Silent auth (no UI) ────────────────────────────────────────────────────────
-// Reuses Chrome's cached grant without any UI — only used for token refresh.
-async function performSilentAuth() {
+async function getGoogleAccessToken() {
     return new Promise((resolve, reject) => {
-        chrome.identity.getAuthToken({ interactive: false }, async (googleToken) => {
-            if (chrome.runtime.lastError || !googleToken) {
-                reject(new Error(chrome.runtime.lastError?.message || "No cached token"));
-                return;
+        const redirectUri = chrome.identity.getRedirectURL();
+        const authUrl =
+            `https://accounts.google.com/o/oauth2/v2/auth?` +
+            `client_id=${encodeURIComponent(OAUTH_CLIENT_ID)}` +
+            `&response_type=token` +
+            `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+            `&scope=${encodeURIComponent(OAUTH_SCOPES.join(" "))}` +
+            `&prompt=select_account` +
+            `&access_type=online`;
+
+        chrome.identity.launchWebAuthFlow(
+            { url: authUrl, interactive: true },
+            (responseUrl) => {
+                if (chrome.runtime.lastError) {
+                    return reject(new Error(chrome.runtime.lastError.message));
+                }
+                if (!responseUrl) return reject(new Error("No response URL returned"));
+                const hash = new URL(responseUrl).hash.substring(1);
+                const params = new URLSearchParams(hash);
+                const token = params.get("access_token");
+                if (!token) return reject(new Error("No access_token in response"));
+                resolve(token);
             }
-            try { resolve(await exchangeTokenWithBackend(googleToken)); }
-            catch (e) { reject(e); }
-        });
+        );
     });
 }
 
-// ── Interactive auth — ALWAYS shows Google account picker ──────────────────────
-// Clears Chrome's token cache before calling getAuthToken so Google is forced
-// to show the full account chooser instead of silently reusing the cached grant.
-// This avoids the redirect_uri_mismatch that launchWebAuthFlow causes.
 async function performInteractiveAuth() {
-    // Step 1: Wipe cached tokens — this is what forces the account picker to appear
-    await new Promise(resolve => chrome.identity.clearAllCachedAuthTokens(resolve));
-
-    // Step 2: Now getAuthToken has nothing cached, so Google shows full sign-in UI
-    return new Promise((resolve, reject) => {
-        chrome.identity.getAuthToken({ interactive: true }, async (googleToken) => {
-            if (chrome.runtime.lastError || !googleToken) {
-                const err = chrome.runtime.lastError?.message || "No Google token";
-                console.error("Google Auth Error:", err);
-                reject(new Error(err));
-                return;
-            }
-            try {
-                resolve(await exchangeTokenWithBackend(googleToken));
-            } catch (e) {
-                reject(e);
-            }
-        });
-    });
+    const googleToken = await getGoogleAccessToken();
+    await chrome.storage.local.set({ googleAccessToken: googleToken });
+    return await exchangeTokenWithBackend(googleToken);
 }
 
-// ── Backend Fetch with auto-refresh ───────────────────────────────────────────
+async function performSilentAuth() {
+    const res = await chrome.storage.local.get(["googleAccessToken"]);
+    if (!res.googleAccessToken) throw new Error("No cached Google token");
+    return await exchangeTokenWithBackend(res.googleAccessToken);
+}
+
 async function backendFetch(path, options = {}) {
-    const url     = path.startsWith("http") ? path : `${BACKEND}${path}`;
+    const url = path.startsWith("http") ? path : `${BACKEND}${path}`;
     const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
     if (backendToken) headers["Authorization"] = `Bearer ${backendToken}`;
-
     let response = await fetch(url, { ...options, headers });
-
-    // JWT expired — try silent refresh first, then give up (don't re-prompt interactively
-    // here; that would show an unexpected popup mid-scan)
     if (response.status === 401 && backendToken) {
-        console.log("JWT expired. Attempting silent refresh...");
         try {
             await performSilentAuth();
             headers["Authorization"] = `Bearer ${backendToken}`;
@@ -87,9 +87,6 @@ async function backendFetch(path, options = {}) {
     return response;
 }
 
-// ── Parallel metadata fetch ────────────────────────────────────────────────────
-// Fetches metadata for multiple messages concurrently in batches.
-// Batch of 8 gives ~3x speedup over sequential without triggering Gmail 429s.
 async function fetchMetadataBatch(messages, batchSize = 8) {
     const results = [];
     for (let i = 0; i < messages.length; i += batchSize) {
@@ -101,13 +98,13 @@ async function fetchMetadataBatch(messages, batchSize = 8) {
                     const hdrs = {};
                     (data.payload?.headers || []).forEach(h => hdrs[h.name] = h.value);
                     return {
-                        id:      msg.id,
+                        id: msg.id,
                         subject: hdrs["Subject"] || "(no subject)",
-                        from:    hdrs["From"]    || "",
-                        snippet: data.snippet    || "",
+                        from: hdrs["From"] || "",
+                        snippet: data.snippet || "",
                         headers: {
                             "List-Unsubscribe": hdrs["List-Unsubscribe"] || "",
-                            "Precedence":       hdrs["Precedence"]       || "",
+                            "Precedence": hdrs["Precedence"] || "",
                         },
                     };
                 } catch (err) {
@@ -121,14 +118,13 @@ async function fetchMetadataBatch(messages, batchSize = 8) {
     return results;
 }
 
-// ── Label application in parallel ─────────────────────────────────────────────
 async function applyLabelsBatch(scored, batchSize = 8) {
     for (let i = 0; i < scored.length; i += batchSize) {
         const batch = scored.slice(i, i + batchSize);
         await Promise.all(
             batch.map(async (e) => {
                 try {
-                    const labelId      = await gmail.getOrCreateLabel(e.label);
+                    const labelId = await gmail.getOrCreateLabel(e.label);
                     const removeLabels = e.archive ? ["INBOX"] : [];
                     await gmail.modifyMessage(e.id, [labelId], removeLabels);
                 } catch (err) {
@@ -139,14 +135,10 @@ async function applyLabelsBatch(scored, batchSize = 8) {
     }
 }
 
-// ── Message Handler ────────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-
-    // ── Passthrough API Request (for /whoami etc.) ─────────────────────────
     if (message.action === "apiRequest") {
         const headers = { "Content-Type": "application/json", ...(message.headers || {}) };
         if (backendToken) headers["Authorization"] = `Bearer ${backendToken}`;
-
         fetch(message.url, {
             method: message.method || "GET",
             headers,
@@ -161,11 +153,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // ── Local Gmail Scan ───────────────────────────────────────────────────
     if (message.action === "scanEmails") {
         (async () => {
             try {
-                // 1. Auth check — fail fast with a clear message
                 const whoamiRes = await backendFetch("/whoami");
                 if (whoamiRes.status === 401) throw new Error("Not authenticated. Please sign in.");
                 if (!whoamiRes.ok) throw new Error(`Backend error: ${whoamiRes.status}`);
@@ -175,37 +165,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     throw new Error("Daily scan limit reached");
                 }
 
-                // 2. List messages from Gmail
                 const maxResults = message.max || 25;
-                const query      = message.query || "in:inbox";
-                console.log(`Fetching up to ${maxResults} messages...`);
+                const query = message.query || "in:inbox";
                 const messages = await gmail.listMessages(query, maxResults);
-                console.log(`Found ${messages.length} messages. Fetching metadata in parallel...`);
-
-                // 3. Parallel metadata fetch (much faster than sequential)
                 const rawEmails = await fetchMetadataBatch(messages, 8);
-                console.log(`Metadata done for ${rawEmails.length} emails. Scoring...`);
-
-                // 4. Local scoring (zero backend calls, zero latency)
                 const scored = batchScore(rawEmails);
-
-                // 5. Apply Gmail labels in parallel batches
-                console.log("Applying labels...");
                 await applyLabelsBatch(scored, 8);
-
                 const analytics = inboxAnalytics(scored);
 
-                // 6. Increment usage counter (fire-and-forget — doesn't block scan response)
                 backendFetch("/usage/increment-scan", { method: "POST" })
                     .then(r => { if (r.status === 429) console.warn("Usage limit hit server-side"); })
-                    .catch(e => console.warn("Usage increment failed (non-blocking):", e));
+                    .catch(e => console.warn("Usage increment failed:", e));
 
                 sendResponse({
                     success: true,
                     data: {
-                        emails:          scored,
+                        emails: scored,
                         analytics,
-                        scans_used:      (whoami.scans_today || 0) + 1,
+                        scans_used: (whoami.scans_today || 0) + 1,
                         scans_remaining: whoami.is_premium
                             ? "unlimited"
                             : Math.max(0, 5 - (whoami.scans_today || 0) - 1),
@@ -219,7 +196,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // ── Cleanup ────────────────────────────────────────────────────────────
     if (message.action === "cleanup") {
         (async () => {
             try {
@@ -228,10 +204,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     sendResponse({ success: true, data: { cleaned: 0 } });
                     return;
                 }
-                // Validate against backend (enforces free-tier 50 email limit)
                 const validationRes = await backendFetch("/usage/validate-cleanup", {
                     method: "POST",
-                    body:   JSON.stringify({ count: ids.length })
+                    body: JSON.stringify({ count: ids.length })
                 });
                 if (validationRes.status === 403) {
                     const errData = await validationRes.json().catch(() => ({}));
@@ -239,7 +214,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
                 if (!validationRes.ok) throw new Error(`Validation failed: ${validationRes.status}`);
 
-                // Archive directly via Gmail API
                 await gmail.batchModifyMessages(ids, [], ["INBOX"]);
                 sendResponse({ success: true, data: { cleaned: ids.length } });
             } catch (error) {
@@ -250,7 +224,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // ── Login — shows account picker every time ────────────────────────────
     if (message.action === "login") {
         (async () => {
             try {
@@ -263,12 +236,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // ── Logout — fully clears ALL cached tokens ────────────────────────────
     if (message.action === "logout") {
         backendToken = null;
-        chrome.storage.local.remove(["backendToken", "cachedEmail", "cachedPremium"]);
-        // clearAllCachedAuthTokens wipes every token Chrome has stored for this
-        // extension — ensures the next login always shows the account picker
+        chrome.storage.local.remove(["backendToken", "cachedEmail", "cachedPremium", "googleAccessToken"]);
         chrome.identity.clearAllCachedAuthTokens(() => {
             console.log("All cached auth tokens cleared.");
         });
@@ -276,14 +246,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // ── Legacy fallback ────────────────────────────────────────────────────
     if (message.action === "openLogin") {
         chrome.tabs.create({ url: `${BACKEND}/login` });
         return true;
     }
 });
 
-// ── Restore token on startup ───────────────────────────────────────────────────
 chrome.storage.local.get(["backendToken"], (res) => {
     if (res.backendToken) backendToken = res.backendToken;
 });
