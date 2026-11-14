@@ -7,11 +7,11 @@ const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
 async function getAccessToken() {
     return new Promise((resolve, reject) => {
-        chrome.identity.getAuthToken({ interactive: false }, (token) => {
-            if (chrome.runtime.lastError || !token) {
-                reject(new Error(chrome.runtime.lastError?.message || "No Google token"));
+        chrome.storage.local.get(["googleAccessToken"], (res) => {
+            if (res.googleAccessToken) {
+                resolve(res.googleAccessToken);
             } else {
-                resolve(token);
+                reject(new Error("No Google access token. Please sign in."));
             }
         });
     });
