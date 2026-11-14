@@ -194,6 +194,9 @@ const ROLE = {
 //   family: evidence of the same family counts once per category (max, not sum)
 //   where : "subject" | "snippet" | "both"   (each is tested separately)
 // ═════════════════════════════════════════════════════════════════════════════
+// Account-security event wording. Shared by the Security Alert rule AND the phishing check below.
+const SECURITY_EVENT_RE = /\b(security alert|critical security alert|new sign-?in|sign-?in (attempt|from|to)|new login|login (attempt|from|to|alert)|password (was |has been )?(changed|reset)|reset your password|two-?factor|2-?step( verification)?|2fa|multi-?factor|recovery (email|phone|info)|account (was )?recovered|account recovery|security checkup|security settings|strengthen the security|suspicious (sign-?in|activity|login)|new device|device (signed|authorized)|unusual (sign-?in|activity)|security notice|was this you|verify it['’]s you)\b/i;
+
 const R = (cat, family, pts, where, re, reason, when) => ({ cat, family, pts, where, re, reason, when });
 
 const RULES = [
@@ -266,7 +269,7 @@ const RULES = [
 
     // ── Security Alert ────────────────────────────────────────────────────────
     R("Security Alert", "structure", 55, "both",
-      /\b(security alert|critical security alert|new sign-?in|sign-?in (attempt|from|to)|new login|login (attempt|from|to|alert)|password (was |has been )?(changed|reset)|reset your password|two-?factor|2-?step( verification)?|2fa|multi-?factor|recovery (email|phone|info)|account (was )?recovered|account recovery|security checkup|security settings|strengthen the security|suspicious (sign-?in|activity|login)|new device|device (signed|authorized)|unusual (sign-?in|activity)|security notice|was this you|verify it['’]s you)\b/i,
+      SECURITY_EVENT_RE,
       "Account security event"),
 
     // ── Recruiter ─────────────────────────────────────────────────────────────
@@ -454,8 +457,14 @@ function assessPhishing(ctx) {
     if (new RegExp(`https?://[^\\s]+\\.(${[...SUSPICIOUS_TLDS].join("|")})(/|\\s|$)`, "i").test(text))
         add(20, "Link to a high-abuse domain", true);
     // 5. Credential / payment lure
-    const lure = /\b(verify|confirm|validate|update|restore|re-?activate|unlock)\W+(your\W+)?(apple id|account|identity|password|payment( details| method| information)?|billing( information| info)?|bank|kyc|pan|card|login|credentials|netbanking)\b|\b(kyc|pan)\W+(update|verification|expired)\b/i.test(text);
+    const lure = /\b(verify|confirm|validate|update|restore|re-?activate|unlock|review)\W+(your\W+)?(apple id|account|identity|password|payment( details| method| information)?|billing( information| info)?|bank|kyc|pan|card|login|credentials|netbanking)\b|\b(kyc|pan)\W+(update|verification|expired)\b/i.test(text);
     if (lure) add(20, "Asks you to verify/update credentials or payment details");
+    // 5b. Genuine providers never send account-security alerts from gmail/yahoo/etc.
+    //     Requires an action request (lure) so a friend describing THEIR sign-in problem
+    //     is not flagged, and skips Re:/Fwd: threads.
+    const isThread = /^\s*(re|fwd?|fw)\s*:/i.test(ctx.subject);
+    if (ctx.isFreemail && !isThread && lure && SECURITY_EVENT_RE.test(text))
+        add(30, "Account-security alert sent from a personal free-mail address", true);
     // 6. Threat / urgency
     const threat = /\b(will be|has been|is being|been)\s+(suspended|blocked|locked|closed|cancel+ed|terminated|deactivated|limited)\b|\bwithin\s+\d+\s+(hours?|hrs?)\b|\bfinal notice\b|\blast warning\b|\bexpires today\b|\baccess (will be )?(restricted|limited)\b|\baccount (is )?(blocked|locked|suspended)\b|\bimmediately\b/i.test(text);
     if (threat) add(15, "Threat/urgency pressure");
@@ -516,6 +525,8 @@ function scoreEmail(subject, sender, bodySnippet = "", headers = {}) {
     }
 
     if (!reasons.length) reasons = ["Classified from sender and subject signals"];
+    if (!phishing.flagged && phishing.deception && phishing.score >= 25)
+        reasons = [...reasons, `Some phishing signals present but below threshold: ${phishing.reasons.slice(0, 2).join("; ")}`];
 
     // Auto-archive only archivable categories AND only when confident ("when in doubt, don't")
     const archive = REMOVE_FROM_INBOX.has(category) && confidence >= ARCHIVE_MIN_CONFIDENCE;
