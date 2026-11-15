@@ -23,7 +23,6 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "inboxai-secret-2025")
 
 # ── Logging Configuration ──────────────────────────────────────────────────────
-# Using structured-like logging for production audit trails
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -165,16 +164,37 @@ def check_usage(email: str):
 
 # ── Authentication Helpers ─────────────────────────────────────────────────────
 def verify_google_token(token):
+    """Verify a Google token. Tries access token first (launchWebAuthFlow),
+    then falls back to ID token verification."""
+    # 1. Try as access token (what launchWebAuthFlow returns)
     try:
-        idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_CLIENT_ID)
-        return idinfo['email']
-    except Exception:
-        try:
-            resp = requests.get(f"https://oauth2.googleapis.com/tokeninfo?access_token={token}")
-            if resp.status_code == 200:
-                return resp.json().get("email")
-        except Exception as e:
-            logger.error(f"Auth Error (Google Token): {e}")
+        resp = requests.get(
+            f"https://oauth2.googleapis.com/tokeninfo?access_token={token}",
+            timeout=5
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            email = data.get("email")
+            if email:
+                logger.info(f"Access token verified: {email}")
+                return email
+            else:
+                logger.warning(f"Access token valid but no email: {data}")
+        else:
+            logger.warning(f"tokeninfo returned {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        logger.error(f"Access token verify failed: {e}")
+
+    # 2. Fallback: try as ID token
+    try:
+        idinfo = id_token.verify_oauth2_token(
+            token, google_requests.Request(), GOOGLE_CLIENT_ID
+        )
+        logger.info(f"ID token verified: {idinfo['email']}")
+        return idinfo["email"]
+    except Exception as e:
+        logger.error(f"ID token verify failed: {e}")
+
     return None
 
 def create_backend_token(email):
@@ -210,7 +230,7 @@ def auth_verify_google():
         return jsonify({"error": "No token provided"}), 400
     email = verify_google_token(token_str)
     if not email:
-        logger.warning(f"Auth Failed: Invalid Google token.")
+        logger.warning("Auth Failed: Invalid Google token.")
         return jsonify({"error": "Invalid Google token"}), 401
     check_usage(email)
     logger.info(f"Auth Success: {email}")
@@ -258,10 +278,10 @@ def explain_email():
     user = check_usage(email)
     if not user.get("is_premium"):
         return jsonify({"error": "Premium feature"}), 403
-    
+
     openai_key = os.environ.get("OPENAI_API_KEY")
     if not openai_key: return jsonify({"error": "OpenAI not configured"}), 500
-    
+
     data = request.json or {}
     try:
         from openai import OpenAI
@@ -316,7 +336,6 @@ def payment_callback():
 def pay_page():
     email = get_authenticated_user()
     if not email: return "Not logged in", 401
-    # Simple hosted checkout placeholder
     return f"<html><body><h2>✦ InboxAI Premium</h2><p>Account: {email}</p><p>Payment abstraction active. Use extension to trigger Razorpay.</p></body></html>"
 
 if __name__ == "__main__":
